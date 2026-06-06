@@ -28,5 +28,7 @@ cipher = "0.5.2"
 hex = "0.4.3"
 anyhow = "1.0.102"
 tauri-plugin-dialog = "2.7.1"
+tauri-plugin-log = "2"
+log = "0.4"
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls", "cookies", "query"] }
 

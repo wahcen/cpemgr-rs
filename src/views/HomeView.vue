@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { Icon } from "@iconify/vue";
 import { useDevicesStore, type DeviceConfig, type Vendor } from "../stores/devices";
 import {
@@ -26,6 +27,7 @@ const defaultForm = (): DeviceConfig => ({
 });
 
 const store = useDevicesStore();
+const router = useRouter();
 
 const showAddDevice = ref(false);
 const form = ref<DeviceConfig>(defaultForm());
@@ -127,6 +129,10 @@ async function deleteDevice(index: number) {
   }
 }
 
+function openDeviceDetail(index: number) {
+  router.push({ name: "device-detail", params: { index: String(index) } });
+}
+
 // ── 设备状态轮询 ───────────────────────────────────────────────
 interface DeviceStatusEntry {
   status: DeviceStatus | null;
@@ -181,9 +187,11 @@ async function refreshDeviceStatus(device: DeviceConfig, key: string) {
 }
 
 async function refreshAll() {
-  await Promise.all(
-    store.devices.map((d, i) => refreshDeviceStatus(d, deviceKey(d, i))),
-  );
+  // FiberHome 只支持串行请求，依次刷新每台设备
+  for (let i = 0; i < store.devices.length; i++) {
+    const d = store.devices[i];
+    await refreshDeviceStatus(d, deviceKey(d, i));
+  }
 }
 
 async function checkDeviceConnectivity(device: DeviceConfig, key: string) {
@@ -209,9 +217,10 @@ async function checkDeviceConnectivity(device: DeviceConfig, key: string) {
 }
 
 async function checkAllConnectivity() {
-  await Promise.all(
-    store.devices.map((d, i) => checkDeviceConnectivity(d, deviceKey(d, i))),
-  );
+  for (let i = 0; i < store.devices.length; i++) {
+    const d = store.devices[i];
+    await checkDeviceConnectivity(d, deviceKey(d, i));
+  }
 }
 
 function syncStatusMap() {
@@ -309,8 +318,9 @@ function fmtTemp(v: number | null): string {
         v-for="(device, index) in store.devices"
         :key="`${device.name}-${index}`"
         shadow="never"
-        class="!rounded-3xl !border-slate-300/30 !bg-white/80 backdrop-blur-lg"
+        class="!rounded-3xl !border-slate-300/30 !bg-white/80 backdrop-blur-lg cursor-pointer transition-shadow hover:!shadow-md"
         :body-style="{ padding: '16px' }"
+        @click="openDeviceDetail(index)"
       >
         <div class="flex items-start gap-3">
           <div class="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-2xl bg-[#eef5ff] text-[#2f6bff]">
@@ -376,22 +386,22 @@ function fmtTemp(v: number | null): string {
           </div>
         </div>
 
-        <div class="mt-3 flex flex-wrap justify-end gap-2 border-t border-slate-200/50 pt-3">
+        <div class="mt-3 flex flex-wrap justify-end gap-2 border-t border-slate-200/50 pt-3" @click.stop>
           <el-button
             size="small"
             round
             :loading="statusMap[deviceKey(device, index)]?.loading"
-            @click="refreshDeviceStatus(device, deviceKey(device, index))"
+            @click.stop="refreshDeviceStatus(device, deviceKey(device, index))"
           >
             <Icon icon="mdi:refresh" width="14" class="mr-1" />刷新
           </el-button>
-          <el-button size="small" round @click="openEditDevice(index)">
+          <el-button size="small" round @click.stop="openEditDevice(index)">
             <Icon icon="mdi:pencil-outline" width="14" class="mr-1" />修改
           </el-button>
-          <el-button size="small" round @click="duplicateDevice(index)">
+          <el-button size="small" round @click.stop="duplicateDevice(index)">
             <Icon icon="mdi:content-copy" width="14" class="mr-1" />复制
           </el-button>
-          <el-button size="small" round type="danger" plain @click="deleteDevice(index)">
+          <el-button size="small" round type="danger" plain @click.stop="deleteDevice(index)">
             <Icon icon="mdi:trash-can-outline" width="14" class="mr-1" />删除
           </el-button>
         </div>

@@ -210,3 +210,145 @@ export async function fetchDeviceStatus(
   });
   return normalizeStatus(raw ?? {});
 }
+
+// ── 射频信号 / 流量 / 载波 / 网络 ─────────────────────────────
+
+export const RADIO_SIGNAL_NODES = {
+  TAC: "X_FH_MobileNetwork.RadioSignalParameter.TAC",
+  PLMN: "X_FH_MobileNetwork.RadioSignalParameter.PLMN",
+  EARFCN_NBR: "X_FH_MobileNetwork.RadioSignalParameter.EARFCN_NBR",
+  RSRP_NBR: "X_FH_MobileNetwork.RadioSignalParameter.RSRP_NBR",
+  WorkMode: "X_FH_MobileNetwork.RadioSignalParameter.WorkMode",
+  PCI_NBR: "X_FH_MobileNetwork.RadioSignalParameter.PCI_NBR",
+  BAND_NBR: "X_FH_MobileNetwork.RadioSignalParameter.BAND_NBR",
+  SINR_NBR: "X_FH_MobileNetwork.RadioSignalParameter.SINR_NBR",
+  RSRQ: "X_FH_MobileNetwork.RadioSignalParameter.RSRQ",
+  RSSI: "X_FH_MobileNetwork.RadioSignalParameter.RSSI",
+  SSB_RSRP: "X_FH_MobileNetwork.RadioSignalParameter.SSB_RSRP",
+  SSB_SINR: "X_FH_MobileNetwork.RadioSignalParameter.SSB_SINR",
+  NR_BAND: "X_FH_MobileNetwork.RadioSignalParameter.NR_Band",
+  NR_Power: "X_FH_MobileNetwork.RadioSignalParameter.NR_Power",
+  NR_CQI: "X_FH_MobileNetwork.RadioSignalParameter.NR_CQI",
+  RSRP: "X_FH_MobileNetwork.RadioSignalParameter.RSRP",
+  SINR: "X_FH_MobileNetwork.RadioSignalParameter.SINR",
+  BAND: "X_FH_MobileNetwork.RadioSignalParameter.BAND",
+  LTE_Power: "X_FH_MobileNetwork.RadioSignalParameter.LTE_Power",
+  LTE_CQI: "X_FH_MobileNetwork.RadioSignalParameter.LTE_CQI",
+  PCI: "X_FH_MobileNetwork.RadioSignalParameter.PCI",
+  NetworkMode: "X_FH_MobileNetwork.SIM.1.NetworkMode",
+  NCGI: "X_FH_MobileNetwork.RadioSignalParameter.NCGI",
+  ECGI: "X_FH_MobileNetwork.RadioSignalParameter.ECGI",
+  QCI: "X_FH_MobileNetwork.RadioSignalParameter.QCI",
+  DL_AMBR: "X_FH_MobileNetwork.RadioSignalParameter.DL_AMBR",
+  UL_AMBR: "X_FH_MobileNetwork.RadioSignalParameter.UL_AMBR",
+} as const;
+
+export type RadioSignalRaw = Partial<Record<keyof typeof RADIO_SIGNAL_NODES, string>>;
+
+export const TRAFFIC_STATS_NODES = {
+  TodayTotalTxBytes: "X_FH_MobileNetwork.TrafficStats.TodayTotalTxBytes",
+  TodayTotalRxBytes: "X_FH_MobileNetwork.TrafficStats.TodayTotalRxBytes",
+  TodayTotalBytes: "X_FH_MobileNetwork.TrafficStats.TodayTotalBytes",
+  MonthTxBytes: "X_FH_MobileNetwork.TrafficStats.MonthTxBytes",
+  MonthRxBytes: "X_FH_MobileNetwork.TrafficStats.MonthRxBytes",
+  MonthTotalBytes: "X_FH_MobileNetwork.TrafficStats.MonthTotalBytes",
+} as const;
+
+export type TrafficStatsRaw = Partial<Record<keyof typeof TRAFFIC_STATS_NODES, string>>;
+
+export const PCC_INFO_NODES = {
+  PCC_Type: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccType",
+  PCC_Band: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccBand",
+  PCC_Pci: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccPci",
+  PCC_Arfcn: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccArfcn",
+  PCC_DlBandWidth: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccDlBandWidth",
+  PCC_UlBandWidth: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccUlBandWidth",
+  PCC_DlMimo: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccDlMimo",
+  PCC_UlMimo: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccUlMimo",
+  PCC_DlModulation: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccDlModulation",
+  PCC_UlModulation: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccUlModulation",
+  PCC_DlRB: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccDlRB",
+  PCC_UlRB: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccUlRB",
+  PCC_DlMCS: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccDlMCS",
+  PCC_UlMCS: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccUlMCS",
+  PCC_RANK: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.rank",
+  PCC_Loss: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.path_loss",
+  PCC_PucchTxPower: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccPucchTxPower",
+  PCC_CQI: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccCQI",
+  PCC_LTEDlTM: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccLTEDlTM",
+  PCC_LTEUlTM: "X_FH_MobileNetwork.NetworkInfo.PCCInfo.pccLTEUlTM",
+} as const;
+
+export type PccInfoRaw = Partial<Record<keyof typeof PCC_INFO_NODES, string>>;
+
+export const BASIC_NETWORK_NODES = {
+  CarrierName: "X_FH_MobileNetwork.SIM.1.CarrierName",
+  MACAddress: "LANDevice.1.LANEthernetInterfaceConfig.1.MACAddress",
+  NetworkMode: "X_FH_MobileNetwork.NetworkSettings.NetworkMode",
+} as const;
+
+export type BasicNetworkRaw = Partial<Record<keyof typeof BASIC_NETWORK_NODES, string>>;
+
+export function fetchRadioSignal(loginUrl: string, timeoutMs?: number) {
+  return fiberhomePostJson<RadioSignalRaw>({
+    loginUrl,
+    ajaxmethod: "get_value_by_xmlnode",
+    dataObj: { ...RADIO_SIGNAL_NODES },
+    timeoutMs,
+  });
+}
+
+export function fetchTrafficStats(loginUrl: string, timeoutMs?: number) {
+  return fiberhomePostJson<TrafficStatsRaw>({
+    loginUrl,
+    ajaxmethod: "get_value_by_xmlnode",
+    dataObj: { ...TRAFFIC_STATS_NODES },
+    timeoutMs,
+  });
+}
+
+export function fetchPccInfo(loginUrl: string, timeoutMs?: number) {
+  return fiberhomePostJson<PccInfoRaw>({
+    loginUrl,
+    ajaxmethod: "get_value_by_xmlnode",
+    dataObj: { ...PCC_INFO_NODES },
+    timeoutMs,
+  });
+}
+
+export function fetchBasicNetwork(loginUrl: string, timeoutMs?: number) {
+  return fiberhomePostJson<BasicNetworkRaw>({
+    loginUrl,
+    ajaxmethod: "get_value_by_xmlnode",
+    dataObj: { ...BASIC_NETWORK_NODES },
+    timeoutMs,
+  });
+}
+
+// ── 一并拉取设备详情所需的全部字段 ────────────────────────
+export interface DeviceFullSnapshot {
+  status: DeviceStatus;
+  radio: RadioSignalRaw;
+  traffic: TrafficStatsRaw;
+  pcc: PccInfoRaw;
+  basic: BasicNetworkRaw;
+}
+
+export async function fetchDeviceFullSnapshot(
+  loginUrl: string,
+  timeoutMs?: number,
+): Promise<DeviceFullSnapshot> {
+  // FiberHome 设备只支持串行请求，并发会导致 sessionid 互相覆盖 / 报错
+  const status = await fetchDeviceStatus(loginUrl, timeoutMs);
+  const radio = await fetchRadioSignal(loginUrl, timeoutMs);
+  const traffic = await fetchTrafficStats(loginUrl, timeoutMs);
+  const pcc = await fetchPccInfo(loginUrl, timeoutMs);
+  const basic = await fetchBasicNetwork(loginUrl, timeoutMs);
+  return {
+    status,
+    radio: radio ?? {},
+    traffic: traffic ?? {},
+    pcc: pcc ?? {},
+    basic: basic ?? {},
+  };
+}

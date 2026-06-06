@@ -359,6 +359,14 @@ pub async fn fiberhome_post(req: FiberhomePostRequest) -> Result<String> {
     payload.insert("sessionid".to_string(), Value::String(sessionid.clone()));
     let payload = Value::Object(payload);
 
+    log::info!(
+        target: "fiberhome::post",
+        "→ {} {} | plaintext payload: {}",
+        req.ajaxmethod,
+        url,
+        payload
+    );
+
     // 4. Encrypt payload with sessionid[:16]
     let key = String::from_utf8(derive_key(&sessionid)?.to_vec())
         .context("sessionid key is not utf-8")?;
@@ -383,6 +391,11 @@ pub async fn fiberhome_post(req: FiberhomePostRequest) -> Result<String> {
     let resp_body = resp.text().await.unwrap_or_default();
 
     if !status.is_success() {
+        log::warn!(
+            target: "fiberhome::post",
+            "← {} HTTP {} body={}",
+            req.ajaxmethod, status, resp_body
+        );
         return Err(anyhow!("$post HTTP {status}: {resp_body}"));
     }
 
@@ -392,10 +405,20 @@ pub async fn fiberhome_post(req: FiberhomePostRequest) -> Result<String> {
         || url.contains(LOGINOUT_PATH);
 
     if is_login_or_logout {
+        log::info!(
+            target: "fiberhome::post",
+            "← {} (login/logout, plain) {}",
+            req.ajaxmethod, resp_body
+        );
         Ok(resp_body)
     } else {
         // response body is hex-encoded ciphertext
         let decrypted = decrypt_response(&resp_body, &sessionid)?;
+        log::info!(
+            target: "fiberhome::post",
+            "← {} decrypted: {}",
+            req.ajaxmethod, decrypted
+        );
         Ok(decrypted)
     }
 }

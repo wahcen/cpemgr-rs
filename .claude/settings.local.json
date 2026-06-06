@@ -7,7 +7,8 @@
       "Bash(python:*)",
       "WebFetch(domain:www.acwifi.net)",
       "Bash(cargo add:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(npx vue-tsc:*)"
     ]
   }
 }

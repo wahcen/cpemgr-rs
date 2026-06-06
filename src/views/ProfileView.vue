@@ -10,6 +10,7 @@ import {
   type ThemeMode,
 } from "../stores/settings";
 import { fiberhomePost } from "../fiberhome";
+import { readLogTail, clearLog } from "../logger";
 
 const store = useDevicesStore();
 const settingsStore = useSettingsStore();
@@ -191,6 +192,97 @@ async function saveProxy() {
   }
 }
 
+// ── 开发者选项 / 日志查看 ─────────────────────────
+const showLogDialog = ref(false);
+const logContent = ref("");
+const logLoading = ref(false);
+const logAutoRefresh = ref(true);
+const logFilter = ref("");
+let logTimer: ReturnType<typeof setInterval> | null = null;
+const logBoxRef = ref<HTMLElement | null>(null);
+
+const filteredLogLines = computed(() => {
+  if (!logContent.value) return [] as string[];
+  const lines = logContent.value.split(/\r?\n/);
+  if (!logFilter.value.trim()) return lines;
+  const kw = logFilter.value.trim().toLowerCase();
+  return lines.filter((l) => l.toLowerCase().includes(kw));
+});
+
+async function refreshLog() {
+  if (logLoading.value) return;
+  logLoading.value = true;
+  try {
+    logContent.value = await readLogTail();
+    // 等下一帧再滚到底
+    requestAnimationFrame(() => {
+      const el = logBoxRef.value;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+  } catch (err) {
+    ElMessage.error(`读取日志失败：${String(err)}`);
+  } finally {
+    logLoading.value = false;
+  }
+}
+
+function openLogDialog() {
+  showLogDialog.value = true;
+  refreshLog();
+  if (logAutoRefresh.value) startLogTimer();
+}
+
+function startLogTimer() {
+  stopLogTimer();
+  logTimer = setInterval(refreshLog, 2000);
+}
+
+function stopLogTimer() {
+  if (logTimer) {
+    clearInterval(logTimer);
+    logTimer = null;
+  }
+}
+
+function toggleAutoRefresh(v: boolean) {
+  logAutoRefresh.value = v;
+  if (v) startLogTimer();
+  else stopLogTimer();
+}
+
+function handleLogDialogClose() {
+  stopLogTimer();
+}
+
+async function handleClearLog() {
+  try {
+    await ElMessageBox.confirm("确定清空当前日志文件？", "清空日志", {
+      type: "warning",
+      confirmButtonText: "清空",
+      cancelButtonText: "取消",
+    });
+  } catch {
+    return;
+  }
+  try {
+    await clearLog();
+    logContent.value = "";
+    ElMessage.success("日志已清空");
+  } catch (err) {
+    ElMessage.error(`清空失败：${String(err)}`);
+  }
+}
+
+async function copyLog() {
+  if (!logContent.value) return;
+  try {
+    await navigator.clipboard.writeText(logContent.value);
+    ElMessage.success("日志已复制");
+  } catch (err) {
+    ElMessage.error(`复制失败：${String(err)}`);
+  }
+}
+
 // ── 导入 / 导出 ────────────────────────────────
 async function handleExport() {
   if (busy.value) return;
@@ -355,6 +447,21 @@ async function handleImport() {
           配置
         </el-button>
       </div>
+
+      <el-divider class="!my-2" />
+
+      <div class="flex items-center justify-between gap-3 py-2">
+        <div class="min-w-0">
+          <p class="m-0 text-[14px] font-semibold text-[#172033]">查看日志</p>
+          <p class="m-0 truncate text-[12px] text-slate-500">
+            查看 fiberhome_post 加密前请求、解密后响应等运行时日志。
+          </p>
+        </div>
+        <el-button round @click="openLogDialog">
+          <Icon icon="mdi:text-box-search-outline" width="14" class="mr-1" />
+          查看
+        </el-button>
+      </div>
     </el-card>
 
     <el-card
@@ -514,6 +621,74 @@ async function handleImport() {
             <Icon icon="mdi:content-save-outline" width="14" class="mr-1" />
             保存
           </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="showLogDialog"
+      title="应用日志"
+      width="94%"
+      align-center
+      :close-on-click-modal="false"
+      class="rounded-3xl"
+      @close="handleLogDialogClose"
+    >
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <el-input
+          v-model="logFilter"
+          size="small"
+          placeholder="按关键字过滤（区分大小写无关）"
+          clearable
+          class="!w-[220px]"
+        >
+          <template #prefix>
+            <Icon icon="mdi:filter-variant" width="14" />
+          </template>
+        </el-input>
+        <el-checkbox
+          :model-value="logAutoRefresh"
+          @update:model-value="(v) => toggleAutoRefresh(Boolean(v))"
+        >
+          每 2s 自动刷新
+        </el-checkbox>
+        <span class="grow" />
+        <el-button size="small" round :loading="logLoading" @click="refreshLog">
+          <Icon icon="mdi:refresh" width="14" class="mr-1" />刷新
+        </el-button>
+        <el-button size="small" round :disabled="!logContent" @click="copyLog">
+          <Icon icon="mdi:content-copy" width="14" class="mr-1" />复制
+        </el-button>
+        <el-button size="small" round type="danger" plain @click="handleClearLog">
+          <Icon icon="mdi:trash-can-outline" width="14" class="mr-1" />清空
+        </el-button>
+      </div>
+
+      <div
+        ref="logBoxRef"
+        class="max-h-[460px] min-h-[260px] overflow-auto rounded-xl bg-slate-900/95 p-3 font-mono text-[11.5px] leading-snug text-emerald-100"
+      >
+        <p v-if="!logContent" class="m-0 text-slate-400">
+          暂无日志（应用启动后会自动写入；触发一次设备请求即可看到 fiberhome::post 记录）
+        </p>
+        <template v-else>
+          <div
+            v-for="(line, i) in filteredLogLines"
+            :key="i"
+            class="whitespace-pre-wrap break-all"
+            :class="{
+              'text-rose-300': /ERROR|WARN/i.test(line),
+              'text-sky-200': /fiberhome::post/.test(line),
+            }"
+          >
+            {{ line }}
+          </div>
+        </template>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <el-button round @click="showLogDialog = false">关闭</el-button>
         </div>
       </template>
     </el-dialog>
