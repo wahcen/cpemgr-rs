@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* 使用 .dark 类启用深色变体（取代 prefers-color-scheme 默认行为） */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   font-family:
     Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont,
@@ -11,6 +14,13 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+  color-scheme: light;
+}
+
+html.dark {
+  color: #e5e7eb;
+  background: #0b1220;
+  color-scheme: dark;
 }
 
 * {
@@ -29,4 +39,46 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow: hidden;
+}
+
+/* ── 深色主题：在 html.dark 下统一压暗（仅覆盖 utility 写死颜色的元素） ── */
+:where(html.dark) .el-card.is-never-shadow,
+:where(html.dark) .el-card {
+  background-color: rgba(30, 41, 59, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #e5e7eb;
+}
+/* el-card__body 默认是不透明白底，深色下需要透传父级背景 */
+:where(html.dark) .el-card .el-card__body {
+  background-color: rgba(30, 41, 59, 0.9) !important;
+}
+
+:where(html.dark) .el-card .text-slate-500,
+:where(html.dark) .text-slate-500 {
+  color: #94a3b8 !important;
+}
+:where(html.dark) .el-card .text-slate-600,
+:where(html.dark) .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+:where(html.dark) .text-slate-400 {
+  color: #64748b !important;
+}
+:where(html.dark) .text-\[\#172033\] {
+  color: #f1f5f9 !important;
+}
+
+:where(html.dark) .bg-slate-50 {
+  background-color: rgba(15, 23, 42, 0.6) !important;
+}
+:where(html.dark) .bg-\[\#eef5ff\] {
+  background-color: rgba(47, 107, 255, 0.18) !important;
+}
+:where(html.dark) .text-\[\#2f6bff\] {
+  color: #7aa6ff !important;
+}
+
+/* el-divider 在深色下基本不可见，加深 */
+:where(html.dark) .el-divider--horizontal {
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
 }

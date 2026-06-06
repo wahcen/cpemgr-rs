@@ -112,3 +112,101 @@ export function fiberhomePost(opts: FiberhomePostOptions) {
 export function fiberhomePostJson<T = unknown>(opts: FiberhomePostOptions) {
   return invoke<T>("fiberhome_post_json", toPostRequest(opts));
 }
+
+// ── 设备状态 / 概览信息 ────────────────────────────────────────
+
+/** 设备状态字段映射（XML 节点路径），与 FiberHome get_value_by_xmlnode 协议对应. */
+export const DEVICE_STATUS_NODES = {
+  SerialNumber: "DeviceInfo.SerialNumber",
+  SoftwareVersion: "DeviceInfo.SoftwareVersion",
+  HardwareVersion: "DeviceInfo.HardwareVersion",
+  IPInterfaceIPAddress:
+    "LANDevice.1.LANHostConfigManagement.IPInterface.1.IPInterfaceIPAddress",
+  CPUUsage: "DeviceInfo.ProcessStatus.CPUUsage",
+  MemoryTotal: "DeviceInfo.MemoryStatus.Total",
+  MemoryFree: "DeviceInfo.MemoryStatus.Free",
+  ModelName: "DeviceInfo.ModelName",
+  mobileSoftversion: "DeviceInfo.MobileModuleSoftwareVersion",
+  Modem5GTemperature: "X_FH_MobileNetwork.Temperature.Modem5GTemperature",
+} as const;
+
+export interface DeviceStatusRaw {
+  SerialNumber?: string;
+  SoftwareVersion?: string;
+  HardwareVersion?: string;
+  IPInterfaceIPAddress?: string;
+  CPUUsage?: string;
+  MemoryTotal?: string;
+  MemoryFree?: string;
+  ModelName?: string;
+  mobileSoftversion?: string;
+  Modem5GTemperature?: string;
+}
+
+export interface DeviceStatus {
+  raw: DeviceStatusRaw;
+  serialNumber: string;
+  softwareVersion: string;
+  hardwareVersion: string;
+  modelName: string;
+  mobileSoftVersion: string;
+  ipAddress: string;
+  /** CPU 使用率，单位 %，无数据时为 null */
+  cpuUsage: number | null;
+  /** 内存总量 (KB)，无数据时为 null */
+  memoryTotalKb: number | null;
+  /** 内存空闲 (KB)，无数据时为 null */
+  memoryFreeKb: number | null;
+  /** 内存使用率，单位 %，无数据时为 null */
+  memoryUsage: number | null;
+  /** 5G 模组温度 (摄氏度)，无数据时为 null */
+  temperatureC: number | null;
+}
+
+function toNumber(v: unknown): number | null {
+  if (v === undefined || v === null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(String(v).trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeStatus(raw: DeviceStatusRaw): DeviceStatus {
+  const total = toNumber(raw.MemoryTotal);
+  const free = toNumber(raw.MemoryFree);
+  const memoryUsage =
+    total && total > 0 && free !== null
+      ? Math.max(0, Math.min(100, ((total - free) / total) * 100))
+      : null;
+  const tempRaw = toNumber(raw.Modem5GTemperature);
+  return {
+    raw,
+    serialNumber: raw.SerialNumber ?? "",
+    softwareVersion: raw.SoftwareVersion ?? "",
+    hardwareVersion: raw.HardwareVersion ?? "",
+    modelName: raw.ModelName ?? "",
+    mobileSoftVersion: raw.mobileSoftversion ?? "",
+    ipAddress: raw.IPInterfaceIPAddress ?? "",
+    cpuUsage: toNumber(raw.CPUUsage),
+    memoryTotalKb: total,
+    memoryFreeKb: free,
+    memoryUsage,
+    // 烽火返回的温度单位是 m°C（毫摄氏度），除以 1000 转换为摄氏度
+    temperatureC: tempRaw === null ? null : tempRaw / 1000,
+  };
+}
+
+/**
+ * 拉取设备概览状态（通过 get_value_by_xmlnode）.
+ * 返回标准化后的字段（包含计算好的内存使用率）.
+ */
+export async function fetchDeviceStatus(
+  loginUrl: string,
+  timeoutMs?: number,
+): Promise<DeviceStatus> {
+  const raw = await fiberhomePostJson<DeviceStatusRaw>({
+    loginUrl,
+    ajaxmethod: "get_value_by_xmlnode",
+    dataObj: { ...DEVICE_STATUS_NODES },
+    timeoutMs,
+  });
+  return normalizeStatus(raw ?? {});
+}

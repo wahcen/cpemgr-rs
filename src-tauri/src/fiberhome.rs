@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
 
+use crate::settings::{current_proxy, ProxyMode};
+
 type Aes128CbcEnc = Encryptor<Aes128>;
 type Aes128CbcDec = Decryptor<Aes128>;
 
@@ -137,12 +139,38 @@ pub fn prepare_post_payload(mut payload: Value, sessionid: String) -> Result<Pre
 // ── HTTP helpers ────────────────────────────────────────────────────
 
 fn build_client(timeout_secs: u64) -> Result<Client> {
-    Client::builder()
+    let mut builder = Client::builder()
         .cookie_store(true)
         .danger_accept_invalid_certs(true)
-        .timeout(Duration::from_secs(timeout_secs))
-        .build()
-        .context("build http client failed")
+        .timeout(Duration::from_secs(timeout_secs));
+
+    // Apply proxy config from app settings.
+    // - None   → 显式禁用代理（忽略系统环境变量）
+    // - System → 让 reqwest 走默认行为（读取 HTTP_PROXY / HTTPS_PROXY / 系统设置）
+    // - Custom → 使用用户配置的代理 URL
+    let proxy_cfg = current_proxy();
+    match proxy_cfg.mode {
+        ProxyMode::None => {
+            builder = builder.no_proxy();
+        }
+        ProxyMode::System => {
+            // reqwest 默认会从 env / 平台 API 读取系统代理，无需额外设置
+        }
+        ProxyMode::Custom => {
+            let url = proxy_cfg.url.trim();
+            if url.is_empty() {
+                return Err(anyhow!("custom proxy URL is empty"));
+            }
+            let mut proxy =
+                reqwest::Proxy::all(url).with_context(|| format!("invalid proxy URL {url}"))?;
+            if !proxy_cfg.username.is_empty() || !proxy_cfg.password.is_empty() {
+                proxy = proxy.basic_auth(&proxy_cfg.username, &proxy_cfg.password);
+            }
+            builder = builder.proxy(proxy);
+        }
+    }
+
+    builder.build().context("build http client failed")
 }
 
 /// Default FiberHome request headers (matching axios defaults).
@@ -151,6 +179,10 @@ fn default_headers() -> reqwest::header::HeaderMap {
     h.insert(
         reqwest::header::HeaderName::from_static("x-requested-with"),
         reqwest::header::HeaderValue::from_static("XMLHttpRequest"),
+    );
+    h.insert(
+        reqwest::header::HeaderName::from_static("user-agent"),
+        reqwest::header::HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"),
     );
     h.insert(
         reqwest::header::ACCEPT,

@@ -1,4 +1,5 @@
 mod fiberhome;
+mod settings;
 mod storage;
 
 use serde_json::Value;
@@ -98,11 +99,27 @@ fn devices_export(app: AppHandle, path: String) -> Result<(), String> {
     storage::export_to_path(&app, &path).map_err(|err| err.to_string())
 }
 
+#[tauri::command]
+fn settings_load(app: AppHandle) -> Result<settings::AppSettings, String> {
+    settings::read_settings(&app).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+fn settings_save(app: AppHandle, settings: settings::AppSettings) -> Result<(), String> {
+    settings::write_settings(&app, &settings).map_err(|err| err.to_string())?;
+    settings::set_proxy_runtime(settings.proxy);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            settings::init_runtime(&app.handle());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             fiberhome_encrypt,
             fiberhome_decrypt,
@@ -117,7 +134,9 @@ pub fn run() {
             devices_load,
             devices_save,
             devices_import,
-            devices_export
+            devices_export,
+            settings_load,
+            settings_save
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

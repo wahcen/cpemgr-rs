@@ -1,12 +1,28 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { Icon } from "@iconify/vue";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useDevicesStore } from "../stores/devices";
+import {
+  useSettingsStore,
+  type ProxyConfig,
+  type ProxyMode,
+  type ThemeMode,
+} from "../stores/settings";
 import { fiberhomePost } from "../fiberhome";
 
 const store = useDevicesStore();
+const settingsStore = useSettingsStore();
 const busy = ref(false);
+
+onMounted(async () => {
+  try {
+    await settingsStore.load();
+    proxyForm.value = { ...settingsStore.settings.proxy };
+  } catch (err) {
+    ElMessage.error(`加载设置失败：${String(err)}`);
+  }
+});
 
 // ── 调试发包工具 ───────────────────────────────
 const showDebugDialog = ref(false);
@@ -92,6 +108,86 @@ async function copyResult() {
     ElMessage.success("已复制到剪贴板");
   } catch (err) {
     ElMessage.error(`复制失败：${String(err)}`);
+  }
+}
+
+// ── 应用设置 / 主题 ────────────────────────────
+const themeOptions: { value: ThemeMode; label: string; icon: string }[] = [
+  { value: "system", label: "跟随系统", icon: "mdi:theme-light-dark" },
+  { value: "light", label: "浅色", icon: "mdi:white-balance-sunny" },
+  { value: "dark", label: "深色", icon: "mdi:weather-night" },
+];
+
+const themeLabel = computed(
+  () =>
+    themeOptions.find((o) => o.value === settingsStore.settings.theme)?.label ?? "跟随系统",
+);
+
+async function chooseTheme(next: ThemeMode) {
+  if (next === settingsStore.settings.theme) return;
+  try {
+    await settingsStore.setTheme(next);
+  } catch (err) {
+    ElMessage.error(`切换主题失败：${String(err)}`);
+  }
+}
+
+// ── 开发者选项 / 代理配置 ─────────────────────────
+const showProxyDialog = ref(false);
+const proxySaving = ref(false);
+const proxyForm = ref<ProxyConfig>({
+  mode: "none",
+  url: "",
+  username: "",
+  password: "",
+});
+
+const proxyModeLabel = computed(() => {
+  switch (settingsStore.settings.proxy.mode) {
+    case "system":
+      return "系统代理";
+    case "custom":
+      return `自定义：${settingsStore.settings.proxy.url || "(未填写)"}`;
+    default:
+      return "未启用";
+  }
+});
+
+const proxyModes: { value: ProxyMode; label: string; desc: string }[] = [
+  { value: "none", label: "不使用代理", desc: "所有请求直连，忽略系统环境变量" },
+  { value: "system", label: "使用系统代理", desc: "读取系统/环境变量中的 HTTP(S)_PROXY" },
+  { value: "custom", label: "自定义 HTTP 代理", desc: "手动填写代理地址（支持 http/https/socks5）" },
+];
+
+function openProxyDialog() {
+  proxyForm.value = { ...settingsStore.settings.proxy };
+  showProxyDialog.value = true;
+}
+
+async function saveProxy() {
+  if (proxyForm.value.mode === "custom") {
+    const url = proxyForm.value.url.trim();
+    if (!url) {
+      ElMessage.error("自定义代理时必须填写代理地址");
+      return;
+    }
+    if (!/^(https?|socks5):\/\//i.test(url)) {
+      ElMessage.error("代理地址需以 http:// / https:// / socks5:// 开头");
+      return;
+    }
+  }
+  proxySaving.value = true;
+  try {
+    await settingsStore.saveProxy({
+      ...proxyForm.value,
+      url: proxyForm.value.url.trim(),
+    });
+    ElMessage.success("代理配置已保存");
+    showProxyDialog.value = false;
+  } catch (err) {
+    ElMessage.error(`保存失败：${String(err)}`);
+  } finally {
+    proxySaving.value = false;
   }
 }
 
@@ -203,6 +299,66 @@ async function handleImport() {
 
     <el-card
       shadow="never"
+      class="!mb-4 !rounded-3xl !border-slate-300/30 !bg-white/80 backdrop-blur-lg"
+      :body-style="{ padding: '18px' }"
+    >
+      <div class="mb-3 flex items-center gap-2">
+        <Icon icon="mdi:cog-outline" width="20" class="text-[#2f6bff]" />
+        <h2 class="m-0 text-[16px] font-semibold">设置</h2>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 py-2">
+        <div class="min-w-0">
+          <p class="m-0 text-[14px] font-semibold text-[#172033]">外观主题</p>
+          <p class="m-0 truncate text-[12px] text-slate-500">
+            当前：{{ themeLabel }}
+          </p>
+        </div>
+        <el-radio-group
+          :model-value="settingsStore.settings.theme"
+          size="small"
+          @update:model-value="(v) => chooseTheme(v as ThemeMode)"
+        >
+          <el-radio-button
+            v-for="opt in themeOptions"
+            :key="opt.value"
+            :value="opt.value"
+          >
+            <span class="inline-flex items-center gap-1">
+              <Icon :icon="opt.icon" width="14" />
+              {{ opt.label }}
+            </span>
+          </el-radio-button>
+        </el-radio-group>
+      </div>
+    </el-card>
+
+    <el-card
+      shadow="never"
+      class="!mb-4 !rounded-3xl !border-slate-300/30 !bg-white/80 backdrop-blur-lg"
+      :body-style="{ padding: '18px' }"
+    >
+      <div class="mb-3 flex items-center gap-2">
+        <Icon icon="mdi:code-tags" width="20" class="text-[#2f6bff]" />
+        <h2 class="m-0 text-[16px] font-semibold">开发者选项</h2>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 py-2">
+        <div class="min-w-0">
+          <p class="m-0 text-[14px] font-semibold text-[#172033]">网络代理</p>
+          <p class="m-0 truncate text-[12px] text-slate-500">
+            当前：{{ proxyModeLabel }}
+          </p>
+        </div>
+        <el-button round @click="openProxyDialog">
+          <Icon icon="mdi:server-network" width="14" class="mr-1" />
+          配置
+        </el-button>
+      </div>
+    </el-card>
+
+    <el-card
+      shadow="never"
       class="!rounded-3xl !border-slate-300/30 !bg-white/80 backdrop-blur-lg"
       :body-style="{ padding: '32px 24px' }"
     >
@@ -292,6 +448,71 @@ async function handleImport() {
           <el-button round type="primary" :loading="debugLoading" @click="sendDebugPost">
             <Icon icon="mdi:send" width="14" class="mr-1" />
             发送
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+    <el-dialog
+      v-model="showProxyDialog"
+      title="网络代理配置"
+      width="92%"
+      align-center
+      :close-on-click-modal="false"
+      class="rounded-3xl"
+    >
+      <el-form :model="proxyForm" label-position="top" size="default">
+        <el-form-item label="代理模式">
+          <el-radio-group v-model="proxyForm.mode" class="!flex !flex-col !items-start gap-2">
+            <el-radio v-for="m in proxyModes" :key="m.value" :value="m.value">
+              <span class="font-semibold">{{ m.label }}</span>
+              <span class="ml-2 text-[12px] text-slate-500">{{ m.desc }}</span>
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <template v-if="proxyForm.mode === 'custom'">
+          <el-form-item label="代理地址">
+            <el-input
+              v-model="proxyForm.url"
+              placeholder="http://127.0.0.1:7890"
+              clearable
+            />
+          </el-form-item>
+          <el-form-item label="用户名（可选）">
+            <el-input v-model="proxyForm.username" placeholder="留空表示无需认证" clearable />
+          </el-form-item>
+          <el-form-item label="密码（可选）">
+            <el-input
+              v-model="proxyForm.password"
+              type="password"
+              show-password
+              placeholder="留空表示无需认证"
+            />
+          </el-form-item>
+        </template>
+
+        <el-alert
+          v-if="proxyForm.mode === 'system'"
+          type="info"
+          show-icon
+          :closable="false"
+          title="将读取系统环境变量 HTTP_PROXY / HTTPS_PROXY / ALL_PROXY 与平台代理配置。"
+        />
+        <el-alert
+          v-else-if="proxyForm.mode === 'none'"
+          type="info"
+          show-icon
+          :closable="false"
+          title="所有 CPE 请求将直连设备，忽略系统代理设置。"
+        />
+      </el-form>
+
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <el-button round @click="showProxyDialog = false">取消</el-button>
+          <el-button round type="primary" :loading="proxySaving" @click="saveProxy">
+            <Icon icon="mdi:content-save-outline" width="14" class="mr-1" />
+            保存
           </el-button>
         </div>
       </template>

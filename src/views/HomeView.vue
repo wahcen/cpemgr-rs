@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { Icon } from "@iconify/vue";
 import { useDevicesStore, type DeviceConfig, type Vendor } from "../stores/devices";
-import { fiberhomePost } from "../fiberhome";
+import {
+  fetchDeviceStatus,
+  fiberhomePost,
+  type DeviceStatus,
+} from "../fiberhome";
 
 const vendors: { value: Vendor; disabled: boolean }[] = [
   { value: "烽火", disabled: false },
@@ -37,6 +41,11 @@ onMounted(async () => {
   } catch (err) {
     ElMessage.error(`加载设备失败：${String(err)}`);
   }
+  syncStatusMap();
+  refreshAll();
+  checkAllConnectivity();
+  pollTimer = setInterval(refreshAll, REFRESH_INTERVAL_MS);
+  connectivityTimer = setInterval(checkAllConnectivity, CONNECTIVITY_INTERVAL_MS);
 });
 
 function openAddDevice() {
@@ -81,7 +90,7 @@ async function testConnectivity() {
         password: form.value.password,
       },
     });
-    if (!data.startsWith('9|')) {
+    if (!data.startsWith('0|')) {
       throw new Error('密码错误或连续失败，请稍后重试')
     }
     ElMessage.success("连通性测试通过（登录成功）");
@@ -116,6 +125,141 @@ async function deleteDevice(index: number) {
   } catch (err) {
     ElMessage.error(`删除失败：${String(err)}`);
   }
+}
+
+// ── 设备状态轮询 ───────────────────────────────────────────────
+interface DeviceStatusEntry {
+  status: DeviceStatus | null;
+  loading: boolean;
+  error: string;
+  /** 连通性测试结果：null=未知, true=通过, false=失败 */
+  connectivityOk: boolean | null;
+  connectivityCheckedAt: number | null;
+  connectivityError: string;
+  connectivityChecking: boolean;
+}
+
+const REFRESH_INTERVAL_MS = 5_000;
+const CONNECTIVITY_INTERVAL_MS = 5 * 60_000;
+
+const statusMap = reactive<Record<string, DeviceStatusEntry>>({});
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let connectivityTimer: ReturnType<typeof setInterval> | null = null;
+
+function deviceKey(d: DeviceConfig, index: number) {
+  return `${index}|${d.url}|${d.name}`;
+}
+
+function ensureEntry(key: string): DeviceStatusEntry {
+  if (!statusMap[key]) {
+    statusMap[key] = {
+      status: null,
+      loading: false,
+      error: "",
+      connectivityOk: null,
+      connectivityCheckedAt: null,
+      connectivityError: "",
+      connectivityChecking: false,
+    };
+  }
+  return statusMap[key];
+}
+
+async function refreshDeviceStatus(device: DeviceConfig, key: string) {
+  const entry = ensureEntry(key);
+  if (entry.loading) return;
+  entry.loading = true;
+  try {
+    const status = await fetchDeviceStatus(device.url);
+    entry.status = status;
+    entry.error = "";
+  } catch (err) {
+    entry.error = String(err);
+  } finally {
+    entry.loading = false;
+  }
+}
+
+async function refreshAll() {
+  await Promise.all(
+    store.devices.map((d, i) => refreshDeviceStatus(d, deviceKey(d, i))),
+  );
+}
+
+async function checkDeviceConnectivity(device: DeviceConfig, key: string) {
+  const entry = ensureEntry(key);
+  if (entry.connectivityChecking) return;
+  entry.connectivityChecking = true;
+  try {
+    const data = await fiberhomePost({
+      loginUrl: device.url,
+      ajaxmethod: "DO_WEB_LOGIN",
+      dataObj: { username: device.username, password: device.password },
+    });
+    const ok = data.startsWith("0|");
+    entry.connectivityOk = ok;
+    entry.connectivityError = ok ? "" : "登录失败（密码错误或被锁定）";
+  } catch (err) {
+    entry.connectivityOk = false;
+    entry.connectivityError = String(err);
+  } finally {
+    entry.connectivityCheckedAt = Date.now();
+    entry.connectivityChecking = false;
+  }
+}
+
+async function checkAllConnectivity() {
+  await Promise.all(
+    store.devices.map((d, i) => checkDeviceConnectivity(d, deviceKey(d, i))),
+  );
+}
+
+function syncStatusMap() {
+  const liveKeys = new Set(store.devices.map((d, i) => deviceKey(d, i)));
+  for (const key of Object.keys(statusMap)) {
+    if (!liveKeys.has(key)) delete statusMap[key];
+  }
+  // 新加入的设备立即触发一次状态 + 连通性
+  store.devices.forEach((d, i) => {
+    const key = deviceKey(d, i);
+    if (!statusMap[key]) {
+      ensureEntry(key);
+      refreshDeviceStatus(d, key);
+      checkDeviceConnectivity(d, key);
+    }
+  });
+}
+
+watch(
+  () => store.devices.map((d, i) => deviceKey(d, i)).join(","),
+  () => syncStatusMap(),
+);
+
+onUnmounted(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  if (connectivityTimer) {
+    clearInterval(connectivityTimer);
+    connectivityTimer = null;
+  }
+});
+
+// ── 状态格式化辅助 ────────────────────────────────────────────
+function tempColorClass(t: number | null): string {
+  if (t === null) return "bg-slate-100 text-slate-500";
+  if (t < 40) return "bg-emerald-100 text-emerald-700";
+  if (t < 50) return "bg-amber-100 text-amber-700";
+  return "bg-rose-100 text-rose-700";
+}
+
+function fmtPercent(v: number | null): string {
+  return v === null ? "--" : `${v.toFixed(0)}%`;
+}
+
+function fmtTemp(v: number | null): string {
+  return v === null ? "--" : `${v.toFixed(1)}°C`;
 }
 </script>
 
@@ -168,28 +312,88 @@ async function deleteDevice(index: number) {
         class="!rounded-3xl !border-slate-300/30 !bg-white/80 backdrop-blur-lg"
         :body-style="{ padding: '16px' }"
       >
-        <div class="grid grid-cols-[54px_1fr] gap-3">
-          <div class="grid h-[54px] w-[54px] place-items-center rounded-2xl bg-[#eef5ff] text-[#2f6bff]">
+        <div class="flex items-start gap-3">
+          <div class="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-2xl bg-[#eef5ff] text-[#2f6bff]">
             <Icon icon="mdi:access-point-network" width="28" />
           </div>
-          <div class="min-w-0">
-            <h2 class="mb-0.5 truncate text-[16px] font-semibold">{{ device.name }}</h2>
-            <p class="m-0 truncate text-[13px] text-slate-500">
-              {{ device.vendor }} · {{ device.username }}
-            </p>
-            <span class="block truncate text-[13px] text-slate-500">{{ device.url }}</span>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h2 class="mb-0.5 truncate text-[16px] font-semibold">{{ device.name }}</h2>
+                <p class="m-0 truncate text-[13px] text-slate-500">
+                  {{ device.vendor }} · {{ device.username }}
+                </p>
+                <span class="block truncate text-[13px] text-slate-500">{{ device.url }}</span>
+              </div>
+              <span
+                class="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold"
+                :class="tempColorClass(statusMap[deviceKey(device, index)]?.status?.temperatureC ?? null)"
+              >
+                <Icon icon="mdi:thermometer" width="14" />
+                {{ fmtTemp(statusMap[deviceKey(device, index)]?.status?.temperatureC ?? null) }}
+              </span>
+            </div>
+
+            <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[12px] text-slate-600">
+              <div class="flex items-center gap-1 truncate">
+                <Icon icon="mdi:identifier" width="13" class="shrink-0 text-slate-400" />
+                <span class="shrink-0 text-slate-400">SN</span>
+                <span class="truncate">
+                  {{ statusMap[deviceKey(device, index)]?.status?.serialNumber || "--" }}
+                </span>
+              </div>
+              <div class="flex items-center gap-1 truncate">
+                <Icon icon="mdi:tag-outline" width="13" class="shrink-0 text-slate-400" />
+                <span class="shrink-0 text-slate-400">软件</span>
+                <span class="truncate">
+                  {{ statusMap[deviceKey(device, index)]?.status?.softwareVersion || "--" }}
+                </span>
+              </div>
+              <div class="flex items-center gap-1 truncate">
+                <Icon icon="mdi:chip" width="13" class="shrink-0 text-slate-400" />
+                <span class="shrink-0 text-slate-400">CPU</span>
+                <span class="truncate">
+                  {{ fmtPercent(statusMap[deviceKey(device, index)]?.status?.cpuUsage ?? null) }}
+                </span>
+              </div>
+              <div class="flex items-center gap-1 truncate">
+                <Icon icon="mdi:memory" width="13" class="shrink-0 text-slate-400" />
+                <span class="shrink-0 text-slate-400">内存</span>
+                <span class="truncate">
+                  {{ fmtPercent(statusMap[deviceKey(device, index)]?.status?.memoryUsage ?? null) }}
+                </span>
+              </div>
+            </div>
+
+            <div
+              v-if="statusMap[deviceKey(device, index)]?.error"
+              class="mt-1 truncate text-[11px] text-rose-500"
+              :title="statusMap[deviceKey(device, index)]?.error"
+            >
+              <Icon icon="mdi:alert-circle-outline" width="12" class="mr-0.5 inline" />
+              状态获取失败
+            </div>
           </div>
-          <div class="col-span-2 flex justify-end gap-2 pt-2">
-            <el-button size="small" round @click="openEditDevice(index)">
-              <Icon icon="mdi:pencil-outline" width="14" class="mr-1" />修改
-            </el-button>
-            <el-button size="small" round @click="duplicateDevice(index)">
-              <Icon icon="mdi:content-copy" width="14" class="mr-1" />复制
-            </el-button>
-            <el-button size="small" round type="danger" plain @click="deleteDevice(index)">
-              <Icon icon="mdi:trash-can-outline" width="14" class="mr-1" />删除
-            </el-button>
-          </div>
+        </div>
+
+        <div class="mt-3 flex flex-wrap justify-end gap-2 border-t border-slate-200/50 pt-3">
+          <el-button
+            size="small"
+            round
+            :loading="statusMap[deviceKey(device, index)]?.loading"
+            @click="refreshDeviceStatus(device, deviceKey(device, index))"
+          >
+            <Icon icon="mdi:refresh" width="14" class="mr-1" />刷新
+          </el-button>
+          <el-button size="small" round @click="openEditDevice(index)">
+            <Icon icon="mdi:pencil-outline" width="14" class="mr-1" />修改
+          </el-button>
+          <el-button size="small" round @click="duplicateDevice(index)">
+            <Icon icon="mdi:content-copy" width="14" class="mr-1" />复制
+          </el-button>
+          <el-button size="small" round type="danger" plain @click="deleteDevice(index)">
+            <Icon icon="mdi:trash-can-outline" width="14" class="mr-1" />删除
+          </el-button>
         </div>
       </el-card>
     </div>
