@@ -8,7 +8,8 @@
       "WebFetch(domain:www.acwifi.net)",
       "Bash(cargo add:*)",
       "Bash(cargo check:*)",
-      "Bash(npx vue-tsc:*)"
+      "Bash(npx vue-tsc:*)",
+      "Bash(java -version)"
     ]
   }
 }

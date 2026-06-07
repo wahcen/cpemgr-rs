@@ -186,6 +186,43 @@ Windows 默认为 `%APPDATA%\com.cpemgr.app\`。
 
 ---
 
+## 📦 发版（GitHub Actions）
+
+仓库内置两条 workflow，均为 **手动触发**（GitHub 仓库 → Actions → 选 workflow → Run workflow）：
+
+| Workflow | 产物 | Runner |
+| --- | --- | --- |
+| `Release Desktop` | Windows `.msi` + `.exe (NSIS)`、Linux `.AppImage` | windows-latest / ubuntu-22.04 |
+| `Release Android` | Android arm64-v8a `.apk`（debug 签名） | ubuntu-latest |
+
+### 步骤
+1. 进入 GitHub 仓库的 **Actions** 标签
+2. 选择 **Release Desktop**，点击 **Run workflow**
+   - `version`：填要发布的版本号，例如 `v0.1.0`（会作为 tag 与 release 名）
+   - `draft`：默认 `true`，会创建草稿 release，方便审阅后再发布
+3. 等桌面构建完成后，再以**相同的 version** 触发 **Release Android**，APK 会追加到同一个 release
+4. 在 Releases 页面校对产物，去掉草稿状态即发布
+
+### 关于 Android APK
+- 仅构建 **arm64-v8a**（覆盖 99% 现役安卓设备）
+- CI 使用 Android **debug keystore** 自动签名，可直接安装运行
+- ⚠️ debug 签名 APK 与未来 release 签名 APK **不能互相覆盖升级**；如需正式分发，请改用自有 keystore（通过 GitHub Secrets 注入并调整 `android.yml`）
+
+### 本地手动构建
+```bash
+# 桌面（当前平台）
+pnpm tauri build
+
+# 仅出 AppImage（Linux）
+pnpm tauri build --bundles appimage
+
+# Android（需本地配置 JDK17 + Android SDK + NDK + ANDROID_NDK_HOME）
+pnpm tauri android init           # 首次执行
+pnpm tauri android build --target aarch64 --apk --debug
+```
+
+---
+
 ## 🧭 路线图（未实现 / 待对接）
 
 - 飞行模式开关、设备重启（接口已知，UI 占位）

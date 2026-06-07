@@ -3,14 +3,18 @@ mod settings;
 mod storage;
 
 use serde_json::Value;
+use tauri::{AppHandle, Manager};
+#[cfg(desktop)]
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, WindowEvent,
+    WindowEvent,
 };
 use tauri_plugin_log::{Target, TargetKind};
+#[cfg(desktop)]
 use tauri_plugin_opener::OpenerExt;
 
+#[cfg(desktop)]
 const GITHUB_URL: &str = "https://github.com/wahcen/cpemgr-rs";
 
 #[tauri::command]
@@ -208,20 +212,23 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             settings::init_runtime(&app.handle());
-            build_tray(&app.handle())?;
+            #[cfg(desktop)]
+            {
+                build_tray(&app.handle())?;
 
-            // 拦截主窗口关闭事件，根据设置决定隐藏到托盘或直接退出
-            if let Some(window) = app.get_webview_window("main") {
-                let win_for_handler = window.clone();
-                window.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
-                        if settings::minimize_to_tray_on_close() {
-                            api.prevent_close();
-                            let _ = win_for_handler.hide();
+                // 拦截主窗口关闭事件，根据设置决定隐藏到托盘或直接退出
+                if let Some(window) = app.get_webview_window("main") {
+                    let win_for_handler = window.clone();
+                    window.on_window_event(move |event| {
+                        if let WindowEvent::CloseRequested { api, .. } = event {
+                            if settings::minimize_to_tray_on_close() {
+                                api.prevent_close();
+                                let _ = win_for_handler.hide();
+                            }
+                            // 否则不拦截，正常关闭并退出（Tauri 默认行为）
                         }
-                        // 否则不拦截，正常关闭并退出（Tauri 默认行为）
-                    }
-                });
+                    });
+                }
             }
             Ok(())
         })
@@ -249,6 +256,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+#[cfg(desktop)]
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let show_item = MenuItem::with_id(app, "show", "显示主界面", true, None::<&str>)?;
     let github_item = MenuItem::with_id(app, "github", "GitHub 项目主页", true, None::<&str>)?;
@@ -311,6 +319,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+#[cfg(desktop)]
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
