@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Icon } from "@iconify/vue";
 import { useDevicesStore, type DeviceConfig, type Vendor } from "../stores/devices";
+import { useConnectivityStore } from "../stores/connectivity";
 import {
   fetchDeviceStatus,
   fiberhomePost,
@@ -27,6 +28,7 @@ const defaultForm = (): DeviceConfig => ({
 });
 
 const store = useDevicesStore();
+const connectivity = useConnectivityStore();
 const router = useRouter();
 
 const showAddDevice = ref(false);
@@ -45,9 +47,7 @@ onMounted(async () => {
   }
   syncStatusMap();
   refreshAll();
-  checkAllConnectivity();
   pollTimer = setInterval(refreshAll, REFRESH_INTERVAL_MS);
-  connectivityTimer = setInterval(checkAllConnectivity, CONNECTIVITY_INTERVAL_MS);
 });
 
 function openAddDevice() {
@@ -138,19 +138,12 @@ interface DeviceStatusEntry {
   status: DeviceStatus | null;
   loading: boolean;
   error: string;
-  /** 连通性测试结果：null=未知, true=通过, false=失败 */
-  connectivityOk: boolean | null;
-  connectivityCheckedAt: number | null;
-  connectivityError: string;
-  connectivityChecking: boolean;
 }
 
 const REFRESH_INTERVAL_MS = 5_000;
-const CONNECTIVITY_INTERVAL_MS = 5 * 60_000;
 
 const statusMap = reactive<Record<string, DeviceStatusEntry>>({});
 let pollTimer: ReturnType<typeof setInterval> | null = null;
-let connectivityTimer: ReturnType<typeof setInterval> | null = null;
 
 function deviceKey(d: DeviceConfig, index: number) {
   return `${index}|${d.url}|${d.name}`;
@@ -158,15 +151,7 @@ function deviceKey(d: DeviceConfig, index: number) {
 
 function ensureEntry(key: string): DeviceStatusEntry {
   if (!statusMap[key]) {
-    statusMap[key] = {
-      status: null,
-      loading: false,
-      error: "",
-      connectivityOk: null,
-      connectivityCheckedAt: null,
-      connectivityError: "",
-      connectivityChecking: false,
-    };
+    statusMap[key] = { status: null, loading: false, error: "" };
   }
   return statusMap[key];
 }
@@ -194,47 +179,17 @@ async function refreshAll() {
   }
 }
 
-async function checkDeviceConnectivity(device: DeviceConfig, key: string) {
-  const entry = ensureEntry(key);
-  if (entry.connectivityChecking) return;
-  entry.connectivityChecking = true;
-  try {
-    const data = await fiberhomePost({
-      loginUrl: device.url,
-      ajaxmethod: "DO_WEB_LOGIN",
-      dataObj: { username: device.username, password: device.password },
-    });
-    const ok = data.startsWith("0|");
-    entry.connectivityOk = ok;
-    entry.connectivityError = ok ? "" : "登录失败（密码错误或被锁定）";
-  } catch (err) {
-    entry.connectivityOk = false;
-    entry.connectivityError = String(err);
-  } finally {
-    entry.connectivityCheckedAt = Date.now();
-    entry.connectivityChecking = false;
-  }
-}
-
-async function checkAllConnectivity() {
-  for (let i = 0; i < store.devices.length; i++) {
-    const d = store.devices[i];
-    await checkDeviceConnectivity(d, deviceKey(d, i));
-  }
-}
-
 function syncStatusMap() {
   const liveKeys = new Set(store.devices.map((d, i) => deviceKey(d, i)));
   for (const key of Object.keys(statusMap)) {
     if (!liveKeys.has(key)) delete statusMap[key];
   }
-  // 新加入的设备立即触发一次状态 + 连通性
+  // 新加入的设备立即触发一次状态拉取
   store.devices.forEach((d, i) => {
     const key = deviceKey(d, i);
     if (!statusMap[key]) {
       ensureEntry(key);
       refreshDeviceStatus(d, key);
-      checkDeviceConnectivity(d, key);
     }
   });
 }
@@ -249,11 +204,29 @@ onUnmounted(() => {
     clearInterval(pollTimer);
     pollTimer = null;
   }
-  if (connectivityTimer) {
-    clearInterval(connectivityTimer);
-    connectivityTimer = null;
-  }
 });
+
+// ── 连通性辅助（数据来自全局 connectivity store） ──────────────
+function connectivityClass(device: DeviceConfig, index: number): string {
+  const ok = connectivity.get(device, index)?.ok;
+  if (ok === true) return "bg-emerald-100 text-emerald-700";
+  if (ok === false) return "bg-rose-100 text-rose-700";
+  return "bg-slate-100 text-slate-500";
+}
+
+function connectivityLabel(device: DeviceConfig, index: number): string {
+  const ok = connectivity.get(device, index)?.ok;
+  if (ok === true) return "在线";
+  if (ok === false) return "离线";
+  return "检测中";
+}
+
+function connectivityIcon(device: DeviceConfig, index: number): string {
+  const ok = connectivity.get(device, index)?.ok;
+  if (ok === true) return "mdi:check-circle";
+  if (ok === false) return "mdi:close-circle";
+  return "mdi:dots-horizontal-circle-outline";
+}
 
 // ── 状态格式化辅助 ────────────────────────────────────────────
 function tempColorClass(t: number | null): string {
@@ -341,6 +314,13 @@ function fmtTemp(v: number | null): string {
               >
                 <Icon icon="mdi:thermometer" width="14" />
                 {{ fmtTemp(statusMap[deviceKey(device, index)]?.status?.temperatureC ?? null) }}
+              </span>
+              <span
+                class="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold"
+                :class="connectivityClass(device, index)"
+              >
+                <Icon :icon="connectivityIcon(device, index)" width="12" />
+                {{ connectivityLabel(device, index) }}
               </span>
             </div>
 

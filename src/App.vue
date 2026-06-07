@@ -1,15 +1,36 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, onUnmounted, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Icon } from "@iconify/vue";
 import { useSettingsStore } from "./stores/settings";
+import { useDevicesStore } from "./stores/devices";
+import { useConnectivityStore } from "./stores/connectivity";
 
 const appWindow = getCurrentWindow();
 const settingsStore = useSettingsStore();
+const devicesStore = useDevicesStore();
+const connectivityStore = useConnectivityStore();
 
-onMounted(() => {
-  // 应用启动时立刻加载设置（含主题），无需等待用户进入“我的”页
+onMounted(async () => {
+  // 应用启动时立刻加载设置（含主题），无需等待用户进入"我的"页
   settingsStore.load().catch(() => {});
+  // 加载设备列表后启动全局连通性检查（1 分钟一次）
+  try {
+    await devicesStore.load();
+  } catch {
+    /* 错误由对应页面提示 */
+  }
+  connectivityStore.start();
+});
+
+// 设备列表变动时，清理失效的连通性条目
+watch(
+  () => devicesStore.devices.map((d, i) => `${i}|${d.url}|${d.name}`).join(","),
+  () => connectivityStore.pruneStale(),
+);
+
+onUnmounted(() => {
+  connectivityStore.stop();
 });
 
 function startDrag(event: MouseEvent) {

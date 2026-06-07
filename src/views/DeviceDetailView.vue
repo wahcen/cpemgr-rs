@@ -8,6 +8,7 @@ import {
   fiberhomePost,
   type DeviceFullSnapshot,
 } from "../fiberhome";
+import { gradeOf, gradeColorText } from "../utils/signalGrade";
 
 const props = defineProps<{ index: string | number }>();
 const router = useRouter();
@@ -173,6 +174,10 @@ function fmtTime(ts: number | null): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function metricClass(metric: string, v: unknown): string {
+  return gradeColorText(gradeOf(metric, v));
 }
 
 // ── 邻区数据解析（RSRP_NBR / SINR_NBR / EARFCN_NBR / BAND_NBR / PCI_NBR 是同长数组的逗号串） ─
@@ -343,19 +348,27 @@ const pcc = computed(() => snapshot.value?.pcc ?? {});
             <div class="space-y-1 text-[12px]">
               <div class="flex justify-between">
                 <span class="text-slate-400">NR_RSRP</span>
-                <span>{{ fmtVal(radio.SSB_RSRP || radio.RSRP, " dBm") }}</span>
+                <span :class="metricClass('NR_RSRP', radio.SSB_RSRP ?? radio.RSRP)">
+                  {{ fmtVal(radio.SSB_RSRP || radio.RSRP, " dBm") }}
+                </span>
               </div>
               <div class="flex justify-between">
                 <span class="text-slate-400">NR_SINR</span>
-                <span>{{ fmtVal(radio.SSB_SINR || radio.SINR, " dB") }}</span>
+                <span :class="metricClass('NR_SINR', radio.SSB_SINR ?? radio.SINR)">
+                  {{ fmtVal(radio.SSB_SINR || radio.SINR, " dB") }}
+                </span>
               </div>
               <div class="flex justify-between">
                 <span class="text-slate-400">RSRQ</span>
-                <span>{{ fmtVal(radio.RSRQ, " dB") }}</span>
+                <span :class="metricClass('NR_RSRQ', radio.RSRQ)">
+                  {{ fmtVal(radio.RSRQ, " dB") }}
+                </span>
               </div>
               <div class="flex justify-between">
                 <span class="text-slate-400">带宽</span>
-                <span>{{ fmtVal(pcc.PCC_DlBandWidth, " MHz") }}</span>
+                <span :class="metricClass('NR_DLBW', pcc.PCC_DlBandWidth)">
+                  {{ fmtVal(pcc.PCC_DlBandWidth, " MHz") }}
+                </span>
               </div>
             </div>
           </div>
@@ -368,19 +381,27 @@ const pcc = computed(() => snapshot.value?.pcc ?? {});
             <div class="space-y-1 text-[12px]">
               <div class="flex justify-between">
                 <span class="text-slate-400">发射功率</span>
-                <span>{{ fmtVal(radio.NR_Power || radio.LTE_Power, " dBm") }}</span>
+                <span :class="metricClass('PUSCH', radio.NR_Power ?? radio.LTE_Power)">
+                  {{ fmtVal(radio.NR_Power || radio.LTE_Power, " dBm") }}
+                </span>
               </div>
               <div class="flex justify-between">
                 <span class="text-slate-400">PUCCH</span>
-                <span>{{ fmtVal(pcc.PCC_PucchTxPower, " dBm") }}</span>
+                <span :class="metricClass('PUCCH', pcc.PCC_PucchTxPower)">
+                  {{ fmtVal(pcc.PCC_PucchTxPower, " dBm") }}
+                </span>
               </div>
               <div class="flex justify-between">
                 <span class="text-slate-400">CQI</span>
-                <span>{{ fmtVal(radio.NR_CQI || radio.LTE_CQI) }}</span>
+                <span :class="metricClass('NR_CQI', radio.NR_CQI ?? radio.LTE_CQI)">
+                  {{ fmtVal(radio.NR_CQI || radio.LTE_CQI) }}
+                </span>
               </div>
               <div class="flex justify-between">
                 <span class="text-slate-400">带宽</span>
-                <span>{{ fmtVal(pcc.PCC_UlBandWidth, " MHz") }}</span>
+                <span :class="metricClass('NR_ULBW', pcc.PCC_UlBandWidth)">
+                  {{ fmtVal(pcc.PCC_UlBandWidth, " MHz") }}
+                </span>
               </div>
             </div>
           </div>
@@ -388,7 +409,7 @@ const pcc = computed(() => snapshot.value?.pcc ?? {});
         <div class="mt-3 grid grid-cols-3 gap-x-3 gap-y-1 border-t border-slate-200/60 pt-2 text-[11px] text-slate-500">
           <div>PCI <span class="text-slate-700">{{ radio.PCI || "--" }}</span></div>
           <div>TAC <span class="text-slate-700">{{ radio.TAC || "--" }}</span></div>
-          <div>RSSI <span class="text-slate-700">{{ fmtVal(radio.RSSI, " dBm") }}</span></div>
+          <div>RSSI <span :class="metricClass('RSSI', radio.RSSI)">{{ fmtVal(radio.RSSI, " dBm") }}</span></div>
           <div class="col-span-3 truncate">
             NCGI <span class="text-slate-700">{{ radio.NCGI || radio.ECGI || "--" }}</span>
           </div>
@@ -531,10 +552,12 @@ const pcc = computed(() => snapshot.value?.pcc ?? {});
             <span class="text-slate-400">UL-MIMO</span><span>{{ fmtVal(pcc.PCC_UlMimo) }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-slate-400">DL-MCS</span><span>{{ fmtVal(pcc.PCC_DlMCS) }}</span>
+            <span class="text-slate-400">DL-MCS</span>
+            <span :class="metricClass('NR_DLMCS', pcc.PCC_DlMCS)">{{ fmtVal(pcc.PCC_DlMCS) }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-slate-400">UL-MCS</span><span>{{ fmtVal(pcc.PCC_UlMCS) }}</span>
+            <span class="text-slate-400">UL-MCS</span>
+            <span :class="metricClass('NR_ULMCS', pcc.PCC_UlMCS)">{{ fmtVal(pcc.PCC_UlMCS) }}</span>
           </div>
           <div class="flex justify-between">
             <span class="text-slate-400">DL-RB</span><span>{{ fmtVal(pcc.PCC_DlRB) }}</span>
@@ -555,7 +578,8 @@ const pcc = computed(() => snapshot.value?.pcc ?? {});
             <span class="text-slate-400">路损</span><span>{{ fmtVal(pcc.PCC_Loss, " dB") }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-slate-400">CQI</span><span>{{ fmtVal(pcc.PCC_CQI) }}</span>
+            <span class="text-slate-400">CQI</span>
+            <span :class="metricClass('NR_CQI', pcc.PCC_CQI)">{{ fmtVal(pcc.PCC_CQI) }}</span>
           </div>
           <div class="flex justify-between">
             <span class="text-slate-400">LTE-DlTM</span><span>{{ fmtVal(pcc.PCC_LTEDlTM) }}</span>
@@ -593,8 +617,8 @@ const pcc = computed(() => snapshot.value?.pcc ?? {});
                 <td class="py-1">{{ n.pci }}</td>
                 <td class="py-1">{{ n.earfcn }}</td>
                 <td class="py-1">{{ n.band }}</td>
-                <td class="py-1 text-right">{{ n.rsrp }}</td>
-                <td class="py-1 text-right">{{ n.sinr }}</td>
+                <td class="py-1 text-right" :class="metricClass('NR_RSRP', n.rsrp)">{{ n.rsrp }}</td>
+                <td class="py-1 text-right" :class="metricClass('NR_SINR', n.sinr)">{{ n.sinr }}</td>
               </tr>
             </tbody>
           </table>
