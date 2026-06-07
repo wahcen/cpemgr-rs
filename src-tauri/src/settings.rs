@@ -62,6 +62,9 @@ pub struct AppSettings {
     pub proxy: ProxyConfig,
     #[serde(default)]
     pub theme: ThemeMode,
+    /// 关闭按钮的行为：true=隐藏到托盘；false=直接退出。默认 false。
+    #[serde(default, rename = "minimizeToTrayOnClose")]
+    pub minimize_to_tray_on_close: bool,
 }
 
 // ── persistent store ─────────────────────────────────────────────
@@ -109,6 +112,7 @@ fn proxy_cell() -> &'static RwLock<ProxyConfig> {
 pub fn init_runtime(app: &AppHandle) {
     if let Ok(settings) = read_settings(app) {
         set_proxy_runtime(settings.proxy);
+        set_minimize_to_tray_on_close(settings.minimize_to_tray_on_close);
     }
 }
 
@@ -123,4 +127,19 @@ pub fn set_proxy_runtime(proxy: ProxyConfig) {
     if let Ok(mut guard) = proxy_cell().write() {
         *guard = proxy;
     }
+}
+
+// ── tray-on-close runtime flag ──────────────────────────────────
+
+fn tray_close_cell() -> &'static std::sync::atomic::AtomicBool {
+    static CELL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    &CELL
+}
+
+pub fn minimize_to_tray_on_close() -> bool {
+    tray_close_cell().load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn set_minimize_to_tray_on_close(value: bool) {
+    tray_close_cell().store(value, std::sync::atomic::Ordering::Relaxed);
 }

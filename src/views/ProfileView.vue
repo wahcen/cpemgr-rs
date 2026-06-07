@@ -133,6 +133,14 @@ async function chooseTheme(next: ThemeMode) {
   }
 }
 
+async function onToggleMinimizeToTray(v: boolean) {
+  try {
+    await settingsStore.setMinimizeToTrayOnClose(v);
+  } catch (err) {
+    ElMessage.error(`保存失败：${String(err)}`);
+  }
+}
+
 // ── 开发者选项 / 代理配置 ─────────────────────────
 const showProxyDialog = ref(false);
 const proxySaving = ref(false);
@@ -423,6 +431,21 @@ async function handleImport() {
           </el-radio-button>
         </el-radio-group>
       </div>
+
+      <el-divider class="!my-2" />
+
+      <div class="flex items-center justify-between gap-3 py-2">
+        <div class="min-w-0">
+          <p class="m-0 text-[14px] font-semibold text-[#172033]">关闭时缩小到托盘</p>
+          <p class="m-0 truncate text-[12px] text-slate-500">
+            打开后点击窗口关闭按钮会隐藏到系统托盘，可从托盘菜单恢复或退出。
+          </p>
+        </div>
+        <el-switch
+          :model-value="settingsStore.settings.minimizeToTrayOnClose"
+          @update:model-value="(v) => onToggleMinimizeToTray(Boolean(v))"
+        />
+      </div>
     </el-card>
 
     <el-card
@@ -461,22 +484,6 @@ async function handleImport() {
           <Icon icon="mdi:text-box-search-outline" width="14" class="mr-1" />
           查看
         </el-button>
-      </div>
-    </el-card>
-
-    <el-card
-      shadow="never"
-      class="!rounded-3xl !border-slate-300/30 !bg-white/80 backdrop-blur-lg"
-      :body-style="{ padding: '32px 24px' }"
-    >
-      <div class="flex min-h-[180px] flex-col items-center justify-center text-center">
-        <div class="mb-4 grid h-[76px] w-[76px] place-items-center rounded-3xl bg-[#eef5ff] text-[#2f6bff]">
-          <Icon icon="mdi:account-circle-outline" width="48" />
-        </div>
-        <h2 class="mb-2 text-[18px]">预留页面</h2>
-        <p class="m-0 max-w-[300px] text-slate-500">
-          这里暂时留空，后续可放置应用设置、数据备份和关于信息。
-        </p>
       </div>
     </el-card>
 

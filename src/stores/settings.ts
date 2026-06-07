@@ -16,6 +16,7 @@ export type ThemeMode = "system" | "light" | "dark";
 export interface AppSettings {
   proxy: ProxyConfig;
   theme: ThemeMode;
+  minimizeToTrayOnClose: boolean;
 }
 
 function defaultProxy(): ProxyConfig {
@@ -23,7 +24,7 @@ function defaultProxy(): ProxyConfig {
 }
 
 function defaultSettings(): AppSettings {
-  return { proxy: defaultProxy(), theme: "system" };
+  return { proxy: defaultProxy(), theme: "system", minimizeToTrayOnClose: false };
 }
 
 const darkMql =
@@ -68,6 +69,7 @@ export const useSettingsStore = defineStore("settings", () => {
       settings.value = {
         proxy: { ...defaultProxy(), ...(data?.proxy ?? {}) },
         theme: data?.theme ?? "system",
+        minimizeToTrayOnClose: !!data?.minimizeToTrayOnClose,
       };
       loaded.value = true;
       applyTheme(settings.value.theme);
@@ -93,5 +95,12 @@ export const useSettingsStore = defineStore("settings", () => {
     bindSystemListener();
   }
 
-  return { settings, loaded, loading, load, saveProxy, setTheme };
+  async function setMinimizeToTrayOnClose(next: boolean) {
+    const merged: AppSettings = { ...settings.value, minimizeToTrayOnClose: next };
+    await invoke("settings_save", { settings: merged });
+    settings.value = merged;
+    loaded.value = true;
+  }
+
+  return { settings, loaded, loading, load, saveProxy, setTheme, setMinimizeToTrayOnClose };
 });

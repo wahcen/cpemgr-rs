@@ -3,8 +3,15 @@ mod settings;
 mod storage;
 
 use serde_json::Value;
-use tauri::{AppHandle, Manager};
+use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Manager, WindowEvent,
+};
 use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_opener::OpenerExt;
+
+const GITHUB_URL: &str = "https://github.com/wahcen/cpemgr-rs";
 
 #[tauri::command]
 fn fiberhome_encrypt(plaintext: String, key: String) -> Result<String, String> {
@@ -109,6 +116,7 @@ fn settings_load(app: AppHandle) -> Result<settings::AppSettings, String> {
 fn settings_save(app: AppHandle, settings: settings::AppSettings) -> Result<(), String> {
     settings::write_settings(&app, &settings).map_err(|err| err.to_string())?;
     settings::set_proxy_runtime(settings.proxy);
+    settings::set_minimize_to_tray_on_close(settings.minimize_to_tray_on_close);
     Ok(())
 }
 
@@ -200,6 +208,21 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             settings::init_runtime(&app.handle());
+            build_tray(&app.handle())?;
+
+            // 拦截主窗口关闭事件，根据设置决定隐藏到托盘或直接退出
+            if let Some(window) = app.get_webview_window("main") {
+                let win_for_handler = window.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        if settings::minimize_to_tray_on_close() {
+                            api.prevent_close();
+                            let _ = win_for_handler.hide();
+                        }
+                        // 否则不拦截，正常关闭并退出（Tauri 默认行为）
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -224,4 +247,74 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn build_tray(app: &AppHandle) -> tauri::Result<()> {
+    let show_item = MenuItem::with_id(app, "show", "显示主界面", true, None::<&str>)?;
+    let github_item = MenuItem::with_id(app, "github", "GitHub 项目主页", true, None::<&str>)?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    let about_item = MenuItem::with_id(
+        app,
+        "about",
+        format!("关于 v{}", env!("CARGO_PKG_VERSION")),
+        true,
+        None::<&str>,
+    )?;
+    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+
+    let menu = Menu::with_items(
+        app,
+        &[&show_item, &github_item, &separator, &about_item, &quit_item],
+    )?;
+
+    TrayIconBuilder::with_id("main-tray")
+        .tooltip("CPEMGR-RS")
+        .icon(app.default_window_icon().cloned().ok_or_else(|| {
+            tauri::Error::AssetNotFound("default window icon missing".to_string())
+        })?)
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show" => show_main_window(app),
+            "github" => {
+                if let Err(err) = app.opener().open_url(GITHUB_URL, None::<&str>) {
+                    log::warn!(target: "tray", "open github url failed: {err}");
+                }
+            }
+            "about" => {
+                use tauri_plugin_dialog::DialogExt;
+                app.dialog()
+                    .message(format!(
+                        "CPEMGR-RS\n版本 v{}\n\nCPE 设备管理工具\n{}",
+                        env!("CARGO_PKG_VERSION"),
+                        GITHUB_URL,
+                    ))
+                    .title("关于")
+                    .show(|_| {});
+            }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(tray.app_handle());
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }
