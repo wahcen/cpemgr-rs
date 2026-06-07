@@ -103,14 +103,28 @@ export function fiberhomeGetJson<T = unknown>(opts: FiberhomeGetOptions) {
  * 对应 axios.js `$post(ajaxmethod, dataObj, checkMode, longPath, timeout, contentType)`.
  * 内部会自动取 token、加密 payload、解密响应（DO_WEB_LOGIN/LOGOUT 除外）.
  * 返回的是解密后的明文（通常是 JSON 字符串）.
+ *
+ * 注意：与设备的通信必须串行——所有 $post 调用会进入全局队列，前一个请求结束后下一个才会发出。
  */
 export function fiberhomePost(opts: FiberhomePostOptions) {
-  return invoke<string>("fiberhome_post", toPostRequest(opts));
+  return enqueuePost(() => invoke<string>("fiberhome_post", toPostRequest(opts)));
 }
 
-/** 同 `fiberhomePost` 但直接 JSON.parse 返回. */
+/** 同 `fiberhomePost` 但直接 JSON.parse 返回（同样进入全局串行队列）. */
 export function fiberhomePostJson<T = unknown>(opts: FiberhomePostOptions) {
-  return invoke<T>("fiberhome_post_json", toPostRequest(opts));
+  return enqueuePost(() => invoke<T>("fiberhome_post_json", toPostRequest(opts)));
+}
+
+// ── 全局串行队列 ─────────────────────────────────────────────
+// FiberHome 设备只支持串行 POST：并发会导致 sessionid 互相覆盖 / 失败。
+// 把所有 fiberhome_post(_json) 串成一条链，无论调用方在哪里同时触发。
+let postChain: Promise<unknown> = Promise.resolve();
+
+function enqueuePost<T>(task: () => Promise<T>): Promise<T> {
+  const next = postChain.then(task, task);
+  // 即使本次 reject 也不阻断后续任务，因此 catch 后再赋回链头
+  postChain = next.catch(() => undefined);
+  return next;
 }
 
 // ── 设备状态 / 概览信息 ────────────────────────────────────────
