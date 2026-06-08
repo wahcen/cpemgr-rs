@@ -38,7 +38,24 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  /* iOS / Android WebView 100vh 不含状态栏，用动态 vh 占满全屏 */
+  min-height: 100dvh;
   overflow: hidden;
+  /* 禁用移动端双指缩放与双击缩放 */
+  touch-action: pan-x pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /* iOS 橡皮筋滚动只在内部容器生效 */
+  overscroll-behavior: none;
+}
+
+/* 允许输入框和可编辑区域选择文本 */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* ── 隐藏滚动条但保留滚动能力 ───────────────────────────── */

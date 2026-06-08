@@ -192,8 +192,8 @@ Windows 默认为 `%APPDATA%\com.cpemgr.app\`。
 
 | Workflow | 产物 | Runner |
 | --- | --- | --- |
-| `Release Desktop` | Windows `.msi` + `.exe (NSIS)`、Linux `.AppImage` | windows-latest / ubuntu-22.04 |
-| `Release Android` | Android arm64-v8a `.apk`（debug 签名） | ubuntu-latest |
+| `Release Desktop` | `cpemgr-rs_<ver>_x64-setup.exe`、`cpemgr-rs_<ver>_x64_en-US.msi`、`cpemgr-rs_<ver>_amd64.AppImage` | windows-latest / ubuntu-22.04 |
+| `Release Android` | `cpemgr-rs-<ver>-android-arm64-v8a.apk`（debug 签名） | ubuntu-latest |
 
 ### 步骤
 1. 进入 GitHub 仓库的 **Actions** 标签

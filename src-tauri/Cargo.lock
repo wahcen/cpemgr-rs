@@ -786,6 +786,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "cpemgr-rs"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "anyhow",
+ "cbc",
+ "cipher",
+ "hex",
+ "log",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-log",
+ "tauri-plugin-opener",
+]
+
+[[package]]
 name = "cpubits"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4296,26 +4316,6 @@ dependencies = [
  "webview2-com",
  "window-vibrancy",
  "windows",
-]
-
-[[package]]
-name = "tauri-app"
-version = "0.1.0"
-dependencies = [
- "aes",
- "anyhow",
- "cbc",
- "cipher",
- "hex",
- "log",
- "reqwest",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-log",
- "tauri-plugin-opener",
 ]
 
 [[package]]

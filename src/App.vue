@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from "vue";
+import { computed, onMounted, onUnmounted, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Icon } from "@iconify/vue";
 import { useSettingsStore } from "./stores/settings";
@@ -10,6 +10,13 @@ const appWindow = getCurrentWindow();
 const settingsStore = useSettingsStore();
 const devicesStore = useDevicesStore();
 const connectivityStore = useConnectivityStore();
+
+// 平台判断：移动端隐藏自定义标题栏（避免遮挡系统状态栏 / 留空依靠 safe-area）
+// 直接读 UA 即可：Tauri Android WebView UA 含 "Android"；iOS WKWebView 含 "iPhone"/"iPad"
+const isMobile = computed(() => {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+});
 
 onMounted(async () => {
   // 应用启动时立刻加载设置（含主题），无需等待用户进入"我的"页
@@ -55,8 +62,16 @@ const tabs = [
 </script>
 
 <template>
-  <main class="app-bg relative h-screen w-screen overflow-hidden">
+  <main
+    class="app-bg relative h-screen w-screen overflow-hidden"
+    :class="{ 'is-mobile': isMobile }"
+  >
+    <!-- 移动端：留出顶部 safe-area，避开状态栏；不显示拖拽标题栏 -->
+    <div v-if="isMobile" class="mobile-statusbar-spacer" aria-hidden="true" />
+
+    <!-- 桌面端：自定义标题栏（窗口拖拽 + 最小化 / 关闭） -->
     <header
+      v-else
       class="app-header fixed inset-x-0 top-0 z-30 flex h-[42px] select-none items-center justify-between px-2 pl-3.5 backdrop-blur-lg"
       data-tauri-drag-region
       @mousedown="startDrag"
@@ -97,7 +112,7 @@ const tabs = [
     <RouterView />
 
     <nav
-      class="liquid-nav fixed inset-x-3.5 bottom-3.5 z-10 grid grid-cols-4 gap-1.5 rounded-3xl p-2"
+      class="liquid-nav fixed inset-x-3.5 z-10 grid grid-cols-4 gap-1.5 rounded-3xl p-2"
       aria-label="主导航"
     >
       <RouterLink
@@ -135,6 +150,24 @@ const tabs = [
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+/* ── 移动端：顶部留空避开状态栏 ──────────────────────── */
+/* 用 env(safe-area-inset-top) 取系统状态栏高度；
+   设置最小值 24px 兜底（部分 WebView env 取不到值会返回 0）。 */
+.mobile-statusbar-spacer {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: max(env(safe-area-inset-top, 0px), 24px);
+  /* 与底层背景融合，不再加任何 UI 元素，仅作为安全占位 */
+  background: transparent;
+  z-index: 25;
+  pointer-events: none;
+}
+
+/* 移动端整个 main 推下，让 RouterView 内容也避开状态栏 */
+.app-bg.is-mobile {
+  padding-top: max(env(safe-area-inset-top, 0px), 24px);
+}
+
 /* ── Apple Liquid Glass 底部导航 ─────────────────────────── */
 .liquid-nav {
   background: rgba(255, 255, 255, 0.38);
@@ -146,6 +179,13 @@ const tabs = [
     0 1px 0 rgba(255, 255, 255, 0.95) inset,
     0 -1px 0 rgba(255, 255, 255, 0.3) inset;
   position: fixed;
+  /* 默认底部位置（桌面）：14px；移动端用 safe-area 顶替 */
+  bottom: 14px;
+}
+
+/* 移动端底部抬高，避开 iOS Home Indicator / Android 手势条 */
+.is-mobile .liquid-nav {
+  bottom: max(env(safe-area-inset-bottom, 0px), 12px);
 }
 
 .liquid-nav::before {

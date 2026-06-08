@@ -9,7 +9,9 @@
       "Bash(cargo add:*)",
       "Bash(cargo check:*)",
       "Bash(npx vue-tsc:*)",
-      "Bash(java -version)"
+      "Bash(java -version)",
+      "Bash(pnpm exec:*)",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }
