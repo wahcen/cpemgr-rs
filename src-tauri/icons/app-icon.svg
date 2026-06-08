@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  cpemgr-rs 应用 logo
+  设计：圆角方底渐变 (#2f6bff → #24c8db) + 居中白色 "CPE" 三字
+  尺寸：1024 × 1024
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- 主品牌渐变：左上蓝 → 右下青 -->
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2f6bff"/>
+      <stop offset="100%" stop-color="#24c8db"/>
+    </linearGradient>
+
+    <!-- 左上微高光（液态玻璃感） -->
+    <radialGradient id="topGloss" cx="22%" cy="18%" r="65%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="60%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 圆角方底色 -->
+  <rect x="0" y="0" width="1024" height="1024" rx="232" ry="232" fill="url(#brand)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="232" ry="232" fill="url(#topGloss)"/>
+
+  <!-- 居中 "CPE" 文字
+       字体走系统 sans 栈，CI / 各平台渲染时都有 fallback；
+       text-anchor=middle + dominant-baseline=central 确保几何居中。 -->
+  <text
+    x="512"
+    y="512"
+    fill="#ffffff"
+    font-family="-apple-system, 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+    font-size="380"
+    font-weight="900"
+    letter-spacing="-12"
+    text-anchor="middle"
+    dominant-baseline="central"
+  >CPE</text>
+</svg>

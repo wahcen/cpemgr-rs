@@ -11,7 +11,11 @@
       "Bash(npx vue-tsc:*)",
       "Bash(java -version)",
       "Bash(pnpm exec:*)",
-      "Bash(echo \"exit=$?\")"
+      "Bash(echo \"exit=$?\")",
+      "Read(//c/Users/Acech/VscodeProjects/**)",
+      "Bash(pnpm tauri:*)",
+      "Bash(ls *.png)",
+      "Bash(ls src-tauri/icons/app-icon.*)"
     ]
   }
 }

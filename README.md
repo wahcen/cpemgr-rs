@@ -186,13 +186,40 @@ Windows 默认为 `%APPDATA%\com.cpemgr.app\`。
 
 ---
 
+## 🎨 应用图标 / Logo
+
+源文件：`src-tauri/icons/app-icon.svg`（1024 × 1024，蓝→青品牌渐变 + C 字 + 5G 信号弧）。
+
+如要替换/重做 logo，按以下流程一键铺平所有平台尺寸（Windows `.ico` / macOS `.icns` / Android adaptive icons / 各 PNG 尺寸）：
+
+```bash
+# 1. 替换 src-tauri/icons/app-icon.svg 为你的新设计（仍是 1024x1024）
+# 2. 把 SVG 转成同尺寸 PNG，命名 app-icon.png 并放到 src-tauri/icons/ 下：
+#    - 在线: https://svgtopng.com  (上传 → 下载 → 重命名 → 放进 src-tauri/icons/)
+#    - 本地: rsvg-convert -w 1024 -h 1024 src-tauri/icons/app-icon.svg \
+#            -o src-tauri/icons/app-icon.png
+#    - Inkscape: inkscape src-tauri/icons/app-icon.svg \
+#            -o src-tauri/icons/app-icon.png -w 1024 -h 1024
+# 3. 在项目根目录执行（注意要传完整路径）：
+pnpm tauri icon ./src-tauri/icons/app-icon.png
+```
+
+`pnpm tauri icon` 会自动生成：
+
+- `32x32.png` / `128x128.png` / `128x128@2x.png` / `icon.png`
+- Windows: `icon.ico`
+- macOS: `icon.icns`
+- Android: `gen/android/.../res/mipmap-*/` 下完整 adaptive icon 集
+
+---
+
 ## 📦 发版（GitHub Actions）
 
 仓库内置两条 workflow，均为 **手动触发**（GitHub 仓库 → Actions → 选 workflow → Run workflow）：
 
 | Workflow | 产物 | Runner |
 | --- | --- | --- |
-| `Release Desktop` | `cpemgr-rs_<ver>_x64-setup.exe`、`cpemgr-rs_<ver>_x64_en-US.msi`、`cpemgr-rs_<ver>_amd64.AppImage` | windows-latest / ubuntu-22.04 |
+| `Release Desktop` | Windows `.msi` + `.exe (NSIS)`、macOS `x86_64.dmg` + `aarch64.dmg`、Linux `.AppImage` + `.deb` + `.rpm` | windows-latest / macos-13 / macos-14 / ubuntu-22.04 |
 | `Release Android` | `cpemgr-rs-<ver>-android-arm64-v8a.apk`（debug 签名） | ubuntu-latest |
 
 ### 步骤
