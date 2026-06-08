@@ -147,9 +147,26 @@ const tabs = [
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-/* 移动端整个 main 推下，让 RouterView 内容也避开状态栏 */
-.app-bg.is-mobile {
-  padding-top: max(env(safe-area-inset-top, 0px), 24px);
+/* ── 移动端布局覆盖 ─────────────────────────────────
+   桌面端页面 <section> 普遍写死 pt-[70px]（标题栏高度）+ pb-[104px]（nav 高度）
+   移动端没有标题栏，也需要把内容下边留出底部 nav + 系统手势条空间。
+   - 顶部：贴齐状态栏 + 一点视觉边距
+   - 底部：nav 自身高 ~72px + nav 距底（含 safe-area）+ 视觉缓冲 12px
+
+   用属性选择器精准覆盖页面里硬编码的 pt-[70px] / pb-[104px]，
+   把这两个值在 mobile 下当作可调槽位。 */
+.is-mobile {
+  /* 底部 nav 占用空间 = 56(item) + 16(padding ×2) ≈ 72，
+     距底 = max(safe-area-inset-bottom, 12)，再留 12px 视觉缓冲 */
+  --mobile-nav-clearance: calc(72px + max(env(safe-area-inset-bottom, 0px), 12px) + 12px);
+  /* 顶部 = 状态栏高度 + 14px 视觉边距 */
+  --mobile-top-clearance: calc(env(safe-area-inset-top, 0px) + 14px);
+}
+.is-mobile :deep(.pt-\[70px\]) {
+  padding-top: var(--mobile-top-clearance) !important;
+}
+.is-mobile :deep(.pb-\[104px\]) {
+  padding-bottom: var(--mobile-nav-clearance) !important;
 }
 
 /* ── Apple Liquid Glass 底部导航 ─────────────────────────── */
