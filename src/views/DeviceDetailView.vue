@@ -6,6 +6,7 @@ import { useDevicesStore } from "../stores/devices";
 import {
   fetchDeviceFullSnapshot,
   fiberhomePost,
+  fiberhomePostJson,
   type DeviceFullSnapshot,
 } from "../fiberhome";
 import { gradeOf, gradeColorText } from "../utils/signalGrade";
@@ -107,8 +108,8 @@ async function rebootDevice() {
   try {
     await fiberhomePost({
       loginUrl: device.value.url,
-      ajaxmethod: "set_value_by_xmlnode",
-      dataObj: { "DeviceInfo.X_FH_Reboot": "1" },
+      ajaxmethod: "do_cmd_web",
+      dataObj: { "key": "REBOOT_WEB" },
     });
     ElMessage.success("重启指令已下发");
   } catch (err) {
@@ -119,7 +120,37 @@ async function rebootDevice() {
 }
 
 async function toggleAirplane() {
-  ElMessage.info("飞行模式接口暂未接入");
+  if (!device.value) return;
+  const data = await fiberhomePostJson<{AirplaneEnable: string | undefined}>({
+    loginUrl: device.value.url,
+    ajaxmethod: "get_value_by_xmlnode",
+    dataObj: {
+      AirplaneEnable: "X_FH_MobileNetwork.NetworkSettings.airplan_on"
+    },
+  });
+  const enabled = data.AirplaneEnable === "1";
+  try {
+    await ElMessageBox.confirm(`确定${enabled ? "关闭" : "打开"}飞行模式？`, "飞行模式确认", {
+      type: "warning",
+      confirmButtonText: "确认",
+      cancelButtonText: "取消",
+    });
+  } catch {
+    return;
+  }
+  try {
+    await fiberhomePost({
+      loginUrl: device.value.url,
+      ajaxmethod: "set_single_by_xmlnode",
+      dataObj: { 
+        "url": "X_FH_MobileNetwork.NetworkSettings.airplan_on",
+        "value": enabled ? 0 : 1,
+      },
+    });
+    ElMessage.success(`飞行模式已${enabled ? "关闭" : "打开"}`);
+  } catch (err) {
+    ElMessage.error(`打开飞行模式失败：${String(err)}`);
+  }
 }
 
 // ── 数据辅助 ──────────────────────────────────────
