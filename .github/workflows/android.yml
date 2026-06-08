@@ -20,6 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NDK_VERSION: "26.3.11579264"
+      # 仓库内固定 keystore 路径（由维护者预先生成并 commit）
+      KEYSTORE_PATH: ".github/keystore/release.keystore"
+      KEY_ALIAS: "cpemgr"
+      # ⚠️ 该 keystore 仅用于 OSS 项目签名一致性，不承担安全用途；
+      #    密码公开等同 Android 默认 debug keystore 的处理方式
+      KEYSTORE_PASSWORD: "cpemgr-rs"
+      KEY_PASSWORD: "cpemgr-rs"
     steps:
       - uses: actions/checkout@v4
 
@@ -59,23 +66,108 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
-          key: android-aarch64
+          key: android-aarch64-release
 
       - name: Install JS deps
         run: pnpm install --frozen-lockfile
-
-      - name: Install Tauri CLI
-        run: pnpm add -D @tauri-apps/cli@latest
 
       - name: Init Android project
         run: pnpm tauri android init
         env:
           NDK_HOME: ${{ env.NDK_HOME }}
 
-      - name: Build APK (debug-signed release)
-        # 不传 --apk --aab 默认会产 apk；--target aarch64 仅出 arm64-v8a
-        # 这里用 --debug 让 CI 自动用 debug keystore 签名（用户已确认 debug 签名）
-        run: pnpm tauri android build --target aarch64 --apk --debug
+      - name: Verify keystore exists
+        run: |
+          if [ ! -f "$KEYSTORE_PATH" ]; then
+            echo "::error::Missing $KEYSTORE_PATH — 请按 README 生成并 commit 后再发版"
+            exit 1
+          fi
+
+      - name: Inject signing config
+        # tauri android init 生成的 app/build.gradle.kts 默认只有 debug signing。
+        # 这里在 android { } 块内插入 signingConfigs.release，并把 release buildType
+        # 指向它。用 sed 注入是 Tauri 社区当前的标准做法（gradle.kts 是在 init 期生成的）。
+        run: |
+          set -e
+          GRADLE="src-tauri/gen/android/app/build.gradle.kts"
+          KEYSTORE_ABS="$(realpath "$KEYSTORE_PATH")"
+
+          # 1) 写 keystore.properties 供 build.gradle.kts 读取
+          cat > src-tauri/gen/android/keystore.properties <<EOF
+          storeFile=${KEYSTORE_ABS}
+          storePassword=${KEYSTORE_PASSWORD}
+          keyAlias=${KEY_ALIAS}
+          keyPassword=${KEY_PASSWORD}
+          EOF
+
+          # 2) 在 build.gradle.kts 顶部加载 properties + 注入 signingConfigs.release
+          python3 <<'PY'
+          import re, pathlib
+          p = pathlib.Path("src-tauri/gen/android/app/build.gradle.kts")
+          src = p.read_text()
+
+          # 在第一个 import 后插入 Properties 加载
+          imports_block = '''import java.util.Properties
+          import java.io.FileInputStream
+
+          val keystorePropertiesFile = rootProject.file("keystore.properties")
+          val keystoreProperties = Properties()
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+          }
+
+          '''
+          # 在第一行（plugins 或 import 之前）插入
+          if "Properties()" not in src:
+              src = imports_block + src
+
+          # 在 android { 块内追加 signingConfigs + buildTypes.release.signingConfig
+          # tauri 生成的模板里 android { } 是顶层块；直接在最后一个 } 前注入
+          inject = '''
+              signingConfigs {
+                  create("release") {
+                      keyAlias = keystoreProperties["keyAlias"] as String? ?: ""
+                      keyPassword = keystoreProperties["keyPassword"] as String? ?: ""
+                      storeFile = keystoreProperties["storeFile"]?.let { file(it as String) }
+                      storePassword = keystoreProperties["storePassword"] as String? ?: ""
+                  }
+              }
+              buildTypes {
+                  getByName("release") {
+                      signingConfig = signingConfigs.getByName("release")
+                  }
+              }
+          '''
+          # 找到顶层 android { 块的最后一个 }，在它之前插入
+          # 简单做法：找到 "android {" 后第一次出现的 "\n}\n"，且确认是顶层
+          m = re.search(r'(android\s*\{)', src)
+          if not m:
+              raise SystemExit("android { block not found in build.gradle.kts")
+          # 从 android { 开始做花括号配平
+          start = m.end()
+          depth = 1
+          i = start
+          while i < len(src) and depth > 0:
+              if src[i] == '{':
+                  depth += 1
+              elif src[i] == '}':
+                  depth -= 1
+              i += 1
+          # i 现在指向 android 闭合 } 的下一个字符；插入位置 = i-1
+          if "signingConfigs {" in src:
+              print("signingConfigs already present, skipping inject")
+          else:
+              src = src[:i-1] + inject + src[i-1:]
+          p.write_text(src)
+          print("injected signing config OK")
+          PY
+
+          echo "--- final build.gradle.kts (head 80 lines) ---"
+          head -80 "$GRADLE"
+
+      - name: Build release APK (signed)
+        # 不传 --debug → 走 [profile.release] + 上面注入的 release signingConfig
+        run: pnpm tauri android build --target aarch64 --apk
         env:
           NDK_HOME: ${{ env.NDK_HOME }}
 
@@ -83,16 +175,20 @@ jobs:
         id: locate
         run: |
           set -e
-          APK=$(find src-tauri/gen/android -type f -name "*.apk" | head -n1)
+          # release APK 路径形如 .../outputs/apk/universalRelease/app-universal-release.apk
+          # 或 arm64Release。统一找最新的 *.apk
+          APK=$(find src-tauri/gen/android -type f -name "*-release.apk" \
+                | grep -v unsigned | head -n1 || true)
           if [ -z "$APK" ]; then
-            echo "no apk produced" >&2
+            echo "no signed release apk found; listing outputs:" >&2
             find src-tauri/gen/android -type d -name "outputs" -exec ls -laR {} +
             exit 1
           fi
           DEST="cpemgr-rs-${{ inputs.version }}-android-arm64-v8a.apk"
           cp "$APK" "$DEST"
-          echo "apk=$DEST" >> "$GITHUB_OUTPUT"
           ls -la "$DEST"
+          echo "Size: $(du -h "$DEST" | cut -f1)"
+          echo "apk=$DEST" >> "$GITHUB_OUTPUT"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2

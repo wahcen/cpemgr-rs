@@ -36,3 +36,14 @@ reqwest = { version = "0.13.4", default-features = false, features = ["json", "r
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 
+# ── 体积优化：极致压缩 release 二进制（主要影响 Android .so 大小） ─────
+# 桌面端也受益（Win/Mac/Linux 安装包变小约 30-50%）。
+# 代价：编译耗时翻倍（CI 多 1-2 分钟）；panic 不再 unwind（reqwest/anyhow 不依赖 unwind 所以安全）。
+[profile.release]
+opt-level = "z"        # 最小体积（z 比 s 更激进；牺牲少量运行速度）
+lto = true             # 跨 crate 内联 + 死代码删除（最大头）
+codegen-units = 1      # 关闭并行编译以让 LTO 看到所有代码
+panic = "abort"        # 移除 unwind 栈展开元数据（节省约 10%）
+strip = "symbols"      # 移除符号表
+incremental = false    # 增量编译产物体积更大，CI 用不上
+
