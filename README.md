@@ -232,8 +232,28 @@ pnpm tauri icon ./src-tauri/icons/app-icon.png
 
 ### 关于 Android APK
 - 仅构建 **arm64-v8a**（覆盖 99% 现役安卓设备）
-- CI 使用 Android **debug keystore** 自动签名，可直接安装运行
-- ⚠️ debug 签名 APK 与未来 release 签名 APK **不能互相覆盖升级**；如需正式分发，请改用自有 keystore（通过 GitHub Secrets 注入并调整 `android.yml`）
+- 走 Rust **release profile**（LTO + opt-level=z + strip），APK 体积约 **8–12 MB**
+- CI 使用 **仓库内固定 keystore**（`.github/keystore/release.keystore`）签名 → 同一 keystore 多次发版可互相覆盖升级
+- ⚠️ 该 keystore 与其密码是公开的（同 Android 官方 debug keystore 性质），**不承担身份验证安全用途**；如需正式分发到 Play Store / 企业内网，需要换成私有 keystore（参考 `android.yml` 里 `KEYSTORE_*` 环境变量改用 Secrets 即可）
+
+#### 首次发版需要生成 keystore（仅做一次）
+
+```bash
+# 在仓库根目录生成
+mkdir -p .github/keystore
+keytool -genkey -v \
+  -keystore .github/keystore/release.keystore \
+  -alias cpemgr \
+  -keyalg RSA -keysize 2048 -validity 36500 \
+  -storepass cpemgr-rs -keypass cpemgr-rs \
+  -dname "CN=cpemgr-rs, OU=Dev, O=cpemgr-rs, L=NA, S=NA, C=CN"
+
+git add .github/keystore/release.keystore
+git commit -m "chore(android): add release keystore for CI signing"
+git push
+```
+
+之后每次跑 `Release Android` workflow 都会用这个 keystore 自动签名。
 
 ### 本地手动构建
 ```bash
@@ -245,7 +265,8 @@ pnpm tauri build --bundles appimage
 
 # Android（需本地配置 JDK17 + Android SDK + NDK + ANDROID_NDK_HOME）
 pnpm tauri android init           # 首次执行
-pnpm tauri android build --target aarch64 --apk --debug
+pnpm tauri android build --target aarch64 --apk         # release，需手动签名
+pnpm tauri android build --target aarch64 --apk --debug # debug，可直接装
 ```
 
 ---
