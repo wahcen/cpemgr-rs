@@ -66,12 +66,9 @@ const tabs = [
     class="app-bg relative h-screen w-screen overflow-hidden"
     :class="{ 'is-mobile': isMobile }"
   >
-    <!-- 移动端：留出顶部 safe-area，避开状态栏；不显示拖拽标题栏 -->
-    <div v-if="isMobile" class="mobile-statusbar-spacer" aria-hidden="true" />
-
     <!-- 桌面端：自定义标题栏（窗口拖拽 + 最小化 / 关闭） -->
     <header
-      v-else
+      v-if="!isMobile"
       class="app-header fixed inset-x-0 top-0 z-30 flex h-[42px] select-none items-center justify-between px-2 pl-3.5 backdrop-blur-lg"
       data-tauri-drag-region
       @mousedown="startDrag"
@@ -148,19 +145,6 @@ const tabs = [
 :where(html.dark) .app-header {
   background: rgba(15, 22, 38, 0.7);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* ── 移动端：顶部留空避开状态栏 ──────────────────────── */
-/* 用 env(safe-area-inset-top) 取系统状态栏高度；
-   设置最小值 24px 兜底（部分 WebView env 取不到值会返回 0）。 */
-.mobile-statusbar-spacer {
-  position: fixed;
-  inset: 0 0 auto 0;
-  height: max(env(safe-area-inset-top, 0px), 24px);
-  /* 与底层背景融合，不再加任何 UI 元素，仅作为安全占位 */
-  background: transparent;
-  z-index: 25;
-  pointer-events: none;
 }
 
 /* 移动端整个 main 推下，让 RouterView 内容也避开状态栏 */
