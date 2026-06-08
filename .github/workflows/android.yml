@@ -85,51 +85,31 @@ jobs:
 
       - name: Inject signing config
         # tauri android init 生成的 app/build.gradle.kts 默认只有 debug signing。
-        # 这里在 android { } 块内插入 signingConfigs.release，并把 release buildType
-        # 指向它。用 sed 注入是 Tauri 社区当前的标准做法（gradle.kts 是在 init 期生成的）。
+        # 这里在 android { } 块末尾追加 signingConfigs.release + buildTypes.release.signingConfig，
+        # 全部从环境变量读（无需顶级 val / properties 文件），最自包含。
+        env:
+          CPEMGR_KEYSTORE_PATH: ${{ github.workspace }}/${{ env.KEYSTORE_PATH }}
         run: |
           set -e
           GRADLE="src-tauri/gen/android/app/build.gradle.kts"
-          KEYSTORE_ABS="$(realpath "$KEYSTORE_PATH")"
+          test -f "$GRADLE" || { echo "::error::$GRADLE not found after tauri android init"; exit 1; }
 
-          # 1) 写 keystore.properties 供 build.gradle.kts 读取
-          cat > src-tauri/gen/android/keystore.properties <<EOF
-          storeFile=${KEYSTORE_ABS}
-          storePassword=${KEYSTORE_PASSWORD}
-          keyAlias=${KEY_ALIAS}
-          keyPassword=${KEY_PASSWORD}
-          EOF
-
-          # 2) 在 build.gradle.kts 顶部加载 properties + 注入 signingConfigs.release
-          python3 <<'PY'
+          python3 - <<'PY'
           import re, pathlib
           p = pathlib.Path("src-tauri/gen/android/app/build.gradle.kts")
           src = p.read_text()
 
-          # 在第一个 import 后插入 Properties 加载
-          imports_block = '''import java.util.Properties
-          import java.io.FileInputStream
-
-          val keystorePropertiesFile = rootProject.file("keystore.properties")
-          val keystoreProperties = Properties()
-          if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-          }
-
-          '''
-          # 在第一行（plugins 或 import 之前）插入
-          if "Properties()" not in src:
-              src = imports_block + src
-
-          # 在 android { 块内追加 signingConfigs + buildTypes.release.signingConfig
-          # tauri 生成的模板里 android { } 是顶层块；直接在最后一个 } 前注入
-          inject = '''
+          # 全部 inline 写在 android {} 内部，不依赖任何顶级 val
+          inject = r'''
               signingConfigs {
                   create("release") {
-                      keyAlias = keystoreProperties["keyAlias"] as String? ?: ""
-                      keyPassword = keystoreProperties["keyPassword"] as String? ?: ""
-                      storeFile = keystoreProperties["storeFile"]?.let { file(it as String) }
-                      storePassword = keystoreProperties["storePassword"] as String? ?: ""
+                      val storePath = System.getenv("CPEMGR_KEYSTORE_PATH")
+                      if (storePath != null && storePath.isNotEmpty()) {
+                          storeFile = file(storePath)
+                          storePassword = System.getenv("CPEMGR_KEYSTORE_PASSWORD") ?: ""
+                          keyAlias = System.getenv("CPEMGR_KEY_ALIAS") ?: ""
+                          keyPassword = System.getenv("CPEMGR_KEY_PASSWORD") ?: ""
+                      }
                   }
               }
               buildTypes {
@@ -138,38 +118,45 @@ jobs:
                   }
               }
           '''
-          # 找到顶层 android { 块的最后一个 }，在它之前插入
-          # 简单做法：找到 "android {" 后第一次出现的 "\n}\n"，且确认是顶层
-          m = re.search(r'(android\s*\{)', src)
-          if not m:
-              raise SystemExit("android { block not found in build.gradle.kts")
-          # 从 android { 开始做花括号配平
-          start = m.end()
-          depth = 1
-          i = start
-          while i < len(src) and depth > 0:
-              if src[i] == '{':
-                  depth += 1
-              elif src[i] == '}':
-                  depth -= 1
-              i += 1
-          # i 现在指向 android 闭合 } 的下一个字符；插入位置 = i-1
-          if "signingConfigs {" in src:
-              print("signingConfigs already present, skipping inject")
+
+          if "// cpemgr-rs:signing-injected" in src:
+              print("signing block already injected, skipping")
           else:
-              src = src[:i-1] + inject + src[i-1:]
-          p.write_text(src)
-          print("injected signing config OK")
+              # 找到顶层 android { 的配平结束 }
+              m = re.search(r'\bandroid\s*\{', src)
+              if not m:
+                  raise SystemExit("android { block not found in build.gradle.kts")
+              start = m.end()
+              depth = 1
+              i = start
+              while i < len(src) and depth > 0:
+                  ch = src[i]
+                  if ch == '{':
+                      depth += 1
+                  elif ch == '}':
+                      depth -= 1
+                  i += 1
+              if depth != 0:
+                  raise SystemExit("android { } not balanced")
+              # 在 android 闭合 } 之前插入
+              marker = "    // cpemgr-rs:signing-injected\n"
+              src = src[:i-1] + marker + inject + src[i-1:]
+              p.write_text(src)
+              print("injected signing config OK")
           PY
 
-          echo "--- final build.gradle.kts (head 80 lines) ---"
-          head -80 "$GRADLE"
+          echo "--- build.gradle.kts (full) ---"
+          cat "$GRADLE"
 
       - name: Build release APK (signed)
         # 不传 --debug → 走 [profile.release] + 上面注入的 release signingConfig
         run: pnpm tauri android build --target aarch64 --apk
         env:
           NDK_HOME: ${{ env.NDK_HOME }}
+          CPEMGR_KEYSTORE_PATH: ${{ github.workspace }}/${{ env.KEYSTORE_PATH }}
+          CPEMGR_KEYSTORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD }}
+          CPEMGR_KEY_ALIAS: ${{ env.KEY_ALIAS }}
+          CPEMGR_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
 
       - name: Locate APK
         id: locate
